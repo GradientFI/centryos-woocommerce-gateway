@@ -1,0 +1,72 @@
+# WordPress
+.DS_Store
+Thumbs.db
+
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Node.js (if using npm/yarn)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Composer
+/vendor/
+composer.lock
+
+# Build & Distribution
+/dist/
+/build/
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+logs/
+
+# Environment & Config
+.env
+.env.local
+.env.*.local
+wp-config-local.php
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Translation files (keep .pot, ignore compiled)
+*.mo
+# Keep .pot template files
+!*.pot
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# PHP
+.phpunit.result.cache
+.php_cs.cache
+
+# Testing
+/tests/coverage/
+.phpunit.cache
+
