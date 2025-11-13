@@ -31,7 +31,6 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->secret = $this->get_credential('secret', 'CENTRYOS_API_SECRET');
         $this->webhook_secret = $this->get_credential('webhook_secret', 'CENTRYOS_WEBHOOK_SECRET');
         $this->api_url = $this->get_option('api_url', 'staging');
-        $this->expire_days = intval($this->get_option('expire_days', 7));
         $this->customer_pays = $this->get_option('customer_pays', 'yes');
         $payment_options = $this->get_option('payment_options', ['card', 'google_pay', 'apple_pay']);
         $this->payment_options = is_array($payment_options) ? $payment_options : (array) $payment_options;
@@ -86,16 +85,6 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               'default' => 'staging',
               'description' => 'Select the API environment to use'
           ],
-          'expire_days' => [
-              'title' => 'Payment Link expires (days)',
-              'type'  => 'number',
-              'default' => 7
-          ],
-          'webhook_secret' => [
-              'title' => 'Webhook Secret',
-              'type'  => 'text',
-              'default' => ''
-          ],
           'customer_pays' => [
               'title' => 'Customer Pays',
               'type'  => 'checkbox',
@@ -135,6 +124,9 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             return ['result' => 'failure'];
         }
         
+        // Add customer information as query strings
+        $payment_url = $this->add_customer_query_strings($payment_url, $order);
+        
         $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-woocommerce-gateway'));
         wc_reduce_stock_levels($order_id);
         
@@ -151,7 +143,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     private function build_payload($order) {
         return [
             'currency' => get_woocommerce_currency(),
-            'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+' . $this->expire_days . ' days')),
+            'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+1 day')),
             'name' => sprintf(__('Order #%s', 'centryos-woocommerce-gateway'), $order->get_order_number()),
             'amount' => floatval($order->get_total()),
             'amountLocked' => true,
@@ -162,6 +154,44 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             'acceptedPaymentOptions' => $this->payment_options,
             'dataCollections' => ['Email', 'First name', 'Last name', 'Phone number']
         ];
+    }
+    
+    /**
+     * Add customer information as query strings to payment URL
+     */
+    private function add_customer_query_strings($payment_url, $order) {
+        // Get customer information from order
+        $first_name = $order->get_billing_first_name();
+        $last_name = $order->get_billing_last_name();
+        $email = $order->get_billing_email();
+        $phone = $order->get_billing_phone();
+        $shipping_country = $order->get_shipping_country(); // ISO2 country code
+        
+        // Build query parameters array
+        $query_params = [];
+        
+        if (!empty($first_name)) {
+            $query_params['firstName'] = urlencode($first_name);
+        }
+        if (!empty($last_name)) {
+            $query_params['lastName'] = urlencode($last_name);
+        }
+        if (!empty($email)) {
+            $query_params['email'] = urlencode($email);
+        }
+        if (!empty($phone)) {
+            $query_params['phone'] = urlencode($phone);
+        }
+        if (!empty($shipping_country)) {
+            $query_params['shippingCountry'] = urlencode($shipping_country);
+        }
+        
+        // Add query strings to URL
+        if (!empty($query_params)) {
+            $payment_url = add_query_arg($query_params, $payment_url);
+        }
+        
+        return $payment_url;
     }
     
     /**
