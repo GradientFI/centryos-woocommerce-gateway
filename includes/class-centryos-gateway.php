@@ -17,15 +17,15 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
      */
     public function __construct() {
         $this->id = 'centryos_gateway';
-        $this->method_title = __('CentryOS Payment Gateway', 'centryos-woocommerce-gateway');
-        $this->method_description = __('Accept payments via CentryOS hosted payment links.', 'centryos-woocommerce-gateway');
+        $this->method_title = __('CentryOS Payment Gateway', 'centryos-payment-gateway-for-woocommerce');
+        $this->method_description = __('Accept payments via CentryOS hosted payment links.', 'centryos-payment-gateway-for-woocommerce');
         $this->has_fields = false;
         $this->supports = ['products'];
         
         $this->init_form_fields();
         $this->init_settings();
         
-        $this->title = $this->get_option('title', __('Pay with CentryOS', 'centryos-woocommerce-gateway'));
+        $this->title = $this->get_option('title', __('Pay with CentryOS', 'centryos-payment-gateway-for-woocommerce'));
         $this->description = $this->get_option('description', '');
         $this->client_id = $this->get_credential('client_id', 'CENTRYOS_CLIENT_ID');
         $this->secret = $this->get_credential('secret', 'CENTRYOS_API_SECRET');
@@ -34,6 +34,11 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->customer_pays = $this->get_option('customer_pays', 'yes');
         $payment_options = $this->get_option('payment_options', ['card', 'google_pay', 'apple_pay']);
         $this->payment_options = is_array($payment_options) ? $payment_options : (array) $payment_options;
+        $this->hide_centry_tag = $this->get_option('hide_centry_tag', 'no');
+        $this->color_default = $this->get_option('color_default', '#9333EA');
+        $this->color_subdued = $this->get_option('color_subdued', '#A855F7');
+        $this->color_disabled = $this->get_option('color_disabled', '#E9D5FF');
+        $this->color_pale = $this->get_option('color_pale', '#F3E8FF');
         
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
         add_action('woocommerce_thankyou_' . $this->id, [$this, 'thankyou_page']);
@@ -102,6 +107,36 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               ],
               'default' => ['card', 'google_pay', 'apple_pay']
           ],
+          'hide_centry_tag' => [
+              'title' => 'Hide Centry Tag',
+              'type'  => 'checkbox',
+              'label' => 'Hide CentryOS tag on payment page',
+              'default' => 'no'
+          ],
+          'color_default' => [
+              'title' => 'Default Color',
+              'type'  => 'color',
+              'default' => '#00B2A9',
+              'description' => 'Default color for payment elements'
+          ],
+          'color_subdued' => [
+              'title' => 'Subdued Color',
+              'type'  => 'color',
+              'default' => '#4084B5',
+              'description' => 'Subdued color for payment elements'
+          ],
+          'color_disabled' => [
+              'title' => 'Disabled Color',
+              'type'  => 'color',
+              'default' => '#E2F1FC',
+              'description' => 'Disabled color for payment elements'
+          ],
+          'color_pale' => [
+              'title' => 'Pale Color',
+              'type'  => 'color',
+              'default' => '#E4EFFA',
+              'description' => 'Pale color for payment elements'
+          ],
       ];
     }
 
@@ -118,7 +153,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         
         if (is_wp_error($payment_url)) {
             wc_add_notice(
-                __('Payment error: ', 'centryos-woocommerce-gateway') . $payment_url->get_error_message(),
+                __('Payment error: ', 'centryos-payment-gateway-for-woocommerce') . $payment_url->get_error_message(),
                 'error'
             );
             return ['result' => 'failure'];
@@ -127,7 +162,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         // Add customer information as query strings
         $payment_url = $this->add_customer_query_strings($payment_url, $order);
         
-        $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-woocommerce-gateway'));
+        $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
         wc_reduce_stock_levels($order_id);
         
         return [
@@ -144,7 +179,8 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         return [
             'currency' => get_woocommerce_currency(),
             'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+1 day')),
-            'name' => sprintf(__('Order #%s', 'centryos-woocommerce-gateway'), $order->get_order_number()),
+            // translators: %s: Order number
+            'name' => sprintf(__('Order #%s', 'centryos-payment-gateway-for-woocommerce'), $order->get_order_number()),
             'amount' => floatval($order->get_total()),
             'amountLocked' => true,
             'redirectTo' => $this->get_return_url($order),
@@ -152,7 +188,17 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             'orderId' => (string)$order->get_id(),
             'customerPays' => ($this->customer_pays === 'yes'),
             'acceptedPaymentOptions' => $this->payment_options,
-            'dataCollections' => ['Email', 'First name', 'Last name', 'Phone number']
+            'dataCollections' => ['Email', 'First name', 'Last name', 'Phone number'],
+            'brandingConfig' => [
+                'hideCentryTag' => ($this->hide_centry_tag === 'yes'),
+                'colors' => [
+                    'default' => $this->color_default,
+                    'subdued' => $this->color_subdued,
+                    'disabled' => $this->color_disabled,
+                    'pale' => $this->color_pale
+                ]
+            ]
+           
         ];
     }
     
@@ -198,7 +244,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
      * Thank you page
      */
     public function thankyou_page() {
-        echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-woocommerce-gateway') . '</p>';
+        echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
     }
     
     /**

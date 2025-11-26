@@ -58,7 +58,7 @@ class CentryOS_Blocks_Support extends AbstractPaymentMethodType {
      */
     public function get_payment_method_data() {
         return [
-            'title' => $this->gateway ? $this->gateway->title : __('Pay with CentryOS', 'centryos-woocommerce-gateway'),
+            'title' => $this->gateway ? $this->gateway->title : __('Pay with CentryOS', 'centryos-payment-gateway-for-woocommerce'),
             'description' => $this->gateway ? $this->gateway->description : '',
             'supports' => $this->gateway ? $this->gateway->supports : ['products'],
         ];

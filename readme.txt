@@ -2,7 +2,7 @@
 Contributors: centryos
 Tags: woocommerce, payment, gateway, centryos
 Requires at least: 5.8
-Tested up to: 6.4
+Tested up to: 6.8
 Requires PHP: 7.4
 Stable tag: 1.1.0
 License: GPLv2 or later

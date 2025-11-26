@@ -9,7 +9,7 @@
  * Author URI: https://centryos.xyz
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: centryos-woocommerce-gateway
+ * Text Domain: centryos-payment-gateway-for-woocommerce
  * WC requires at least: 6.0
  * WC tested up to: 9.0
  */
@@ -82,18 +82,6 @@ function centryos_gateway_woocommerce_missing_notice() {
     </div>
     <?php
 }
-
-/**
- * Load plugin textdomain for translations
- */
-function centryos_gateway_load_textdomain() {
-    load_plugin_textdomain(
-        'centryos-woocommerce-gateway',
-        false,
-        dirname(CENTRYOS_GATEWAY_PLUGIN_BASENAME) . '/languages'
-    );
-}
-add_action('init', 'centryos_gateway_load_textdomain');
 
 /**
  * Plugin activation hook

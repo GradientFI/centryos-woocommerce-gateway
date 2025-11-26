@@ -41,8 +41,9 @@ class CentryOS_Webhook_Handler
     $data = json_decode($request->get_body(), true);
 
     // Log webhook for debugging
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[CentryOS Webhook] Received: ' . print_r($data, true));
+    if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+        // Only log if both WP_DEBUG and WP_DEBUG_LOG are enabled
+        error_log('[CentryOS Webhook] Received: ' . wp_json_encode($data));
     }
 
     // Verify webhook signature
@@ -87,8 +88,9 @@ class CentryOS_Webhook_Handler
     }
 
     // Payment not successful
+    // translators: %s: JSON encoded webhook data
     $order->add_order_note(sprintf(
-        __('Webhook received (payment not successful): %s', 'centryos-woocommerce-gateway'),
+        __('Webhook received (payment not successful): %s', 'centryos-payment-gateway-for-woocommerce'),
         wp_json_encode($data)
     ));
 
@@ -148,8 +150,9 @@ class CentryOS_Webhook_Handler
     $summary        = $payload['summary'] ?? '';
 
     // Add admin order note
+    // translators: %1$s: Transaction ID, %2$s: Amount, %3$s: Currency, %4$s: Payment method, %5$s: Summary
     $note = sprintf(
-      __('Payment confirmed via CentryOS webhook. Transaction ID: %s, Amount: %s %s, Method: %s. Summary: %s', 'centryos-woocommerce-gateway'),
+      __('Payment confirmed via CentryOS webhook. Transaction ID: %1$s, Amount: %2$s %3$s, Method: %4$s. Summary: %5$s', 'centryos-payment-gateway-for-woocommerce'),
       $transaction_id,
       $amount,
       $currency,

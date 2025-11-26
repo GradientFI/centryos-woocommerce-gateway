@@ -78,7 +78,7 @@ class CentryOS_API_Client {
      */
     public function generate_jwt() {
         if (empty($this->client_id) || empty($this->secret)) {
-            return new WP_Error('no_credentials', __('Client ID or API Secret not set.', 'centryos-woocommerce-gateway'));
+            return new WP_Error('no_credentials', __('Client ID or API Secret not set.', 'centryos-payment-gateway-for-woocommerce'));
         }
     
         $response = wp_remote_post($this->get_jwt_endpoint(), [
@@ -103,7 +103,7 @@ class CentryOS_API_Client {
         }
         
         $this->log_error('JWT response invalid', $body);
-        return new WP_Error('jwt_failed', __('Failed to generate JWT token.', 'centryos-woocommerce-gateway'));
+        return new WP_Error('jwt_failed', __('Failed to generate JWT token.', 'centryos-payment-gateway-for-woocommerce'));
     }
     
     /**
@@ -141,7 +141,7 @@ class CentryOS_API_Client {
         }
         
         $this->log_error('Payment link response invalid', $body);
-        return new WP_Error('create_failed', __('Failed to create payment link.', 'centryos-woocommerce-gateway'));
+        return new WP_Error('create_failed', __('Failed to create payment link.', 'centryos-payment-gateway-for-woocommerce'));
     }
     
     /**
@@ -151,8 +151,13 @@ class CentryOS_API_Client {
      * @param mixed $data Additional data
      */
     private function log_error($message, $data) {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log(sprintf('[CentryOS Gateway] %s: %s', $message, print_r($data, true)));
+        if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            // Only log if both WP_DEBUG and WP_DEBUG_LOG are enabled
+            if (is_array($data) || is_object($data)) {
+                error_log(sprintf('[CentryOS Gateway] %s: %s', $message, wp_json_encode($data)));
+            } else {
+                error_log(sprintf('[CentryOS Gateway] %s: %s', $message, $data));
+            }
         }
     }
 }
