@@ -1,0 +1,145 @@
+/**
+ * CentryOS Payment Modal Styles
+ *
+ * @package CentryOS_Gateway
+ * @since 1.1.0
+ */
+
+.centryos-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 999999;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.centryos-modal-overlay.active {
+    display: block;
+}
+
+.centryos-modal-container {
+    position: relative;
+    max-width: 600px;
+    width: 90%;
+    margin: 50px auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    padding: 0;
+    overflow: hidden;
+}
+
+.centryos-modal-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+    z-index: 1000000;
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    padding: 0;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.centryos-modal-close:hover {
+    color: #000;
+    background: #fff;
+    transform: scale(1.1);
+}
+
+.centryos-modal-close:focus {
+    outline: 2px solid #9333EA;
+    outline-offset: 2px;
+}
+
+#centryos-payment-iframe {
+    width: 100%;
+    min-height: 600px;
+    border: none;
+    display: block;
+}
+
+/* Loading state */
+.centryos-modal-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    color: #666;
+}
+
+.centryos-spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #9333EA;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: centryos-spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes centryos-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.centryos-modal-loading p {
+    margin: 0;
+    font-size: 16px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .centryos-modal-container {
+        width: 95%;
+        margin: 20px auto;
+        border-radius: 4px;
+    }
+    
+    #centryos-payment-iframe {
+        min-height: 500px;
+    }
+    
+    .centryos-modal-close {
+        top: 5px;
+        right: 10px;
+        width: 30px;
+        height: 30px;
+        font-size: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .centryos-modal-container {
+        width: 100%;
+        margin: 0;
+        border-radius: 0;
+        height: 100vh;
+    }
+    
+    #centryos-payment-iframe {
+        min-height: calc(100vh - 20px);
+    }
+}
+
+/* Prevent body scroll when modal is open */
+body.centryos-modal-open {
+    overflow: hidden;
+}
+

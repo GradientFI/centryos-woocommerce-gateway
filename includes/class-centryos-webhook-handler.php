@@ -177,6 +177,11 @@ class CentryOS_Webhook_Handler
     // Mark order as paid
     $order->payment_complete($transaction_id);
 
+    // Track Meta Pixel Purchase event if enabled
+    if (class_exists('CentryOS_Pixel_Tracker')) {
+        CentryOS_Pixel_Tracker::track_purchase($order);
+    }
+
     // Optional: trigger action hook for integrations
     do_action('centryos_webhook_payment_success', $order->get_id(), $payload);
 
