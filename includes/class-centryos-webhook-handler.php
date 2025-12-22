@@ -48,7 +48,16 @@ class CentryOS_Webhook_Handler
 
     // Verify webhook signature
     $signature = $request->get_header('signature');
-    $secret = defined('CENTRYOS_WEBHOOK_SECRET') ? CENTRYOS_WEBHOOK_SECRET : '';
+    
+    // Get webhook secret from constant or settings
+    $secret = '';
+    if (defined('CENTRYOS_WEBHOOK_SECRET')) {
+        $secret = CENTRYOS_WEBHOOK_SECRET;
+    } else {
+        // Get from gateway settings
+        $settings = get_option('woocommerce_centryos_gateway_settings', []);
+        $secret = $settings['webhook_secret'] ?? '';
+    }
 
     if (empty($secret)) {
         return new WP_REST_Response([

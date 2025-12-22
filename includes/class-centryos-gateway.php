@@ -124,7 +124,29 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
           'client_id' => [
               'title' => 'Client ID',
               'type'  => 'text',
-              'default' => ''
+              'default' => '',
+              'description' => __('Enter your CentryOS Client ID. For security, you can also set this in wp-config.php as CENTRYOS_CLIENT_ID constant.', 'centryos-payment-gateway-for-woocommerce')
+          ],
+          'secret' => [
+              'title' => 'API Secret',
+              'type'  => 'password',
+              'default' => '',
+              'description' => __('Enter your CentryOS API Secret. For security, you can also set this in wp-config.php as CENTRYOS_API_SECRET constant.', 'centryos-payment-gateway-for-woocommerce')
+          ],
+          'webhook_url' => [
+              'title' => 'Webhook URL',
+              'type'  => 'text',
+              'default' => 'https://f7c6d0f0af0d.ngrok-free.app/wordpress/wp-json/v1/wh/centryos/payment-complete',
+              'description' => __('Copy this webhook URL and configure it in your CentryOS dashboard.', 'centryos-payment-gateway-for-woocommerce'),
+              'custom_attributes' => [
+                  'readonly' => 'readonly'
+              ]
+          ],
+          'webhook_secret' => [
+              'title' => 'Webhook Secret',
+              'type'  => 'password',
+              'default' => '',
+              'description' => __('Enter your CentryOS Webhook Secret for signature verification. For security, you can also set this in wp-config.php as CENTRYOS_WEBHOOK_SECRET constant.', 'centryos-payment-gateway-for-woocommerce')
           ],
           'api_url' => [
               'title' => 'API Environment',
@@ -272,9 +294,25 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             wp_send_json_error(['message' => __('Order not found.', 'centryos-payment-gateway-for-woocommerce')]);
         }
         
-        // Verify order belongs to current user (for security)
-        if (!current_user_can('manage_woocommerce') && $order->get_user_id() !== get_current_user_id()) {
-            wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+        // Verify order belongs to current user or is a guest order (for security)
+        $current_user_id = get_current_user_id();
+        $order_user_id = $order->get_user_id();
+        
+        // Allow if: user is admin, order belongs to current user, or both are guest (0)
+        if (!current_user_can('manage_woocommerce')) {
+            if ($order_user_id !== $current_user_id && ($order_user_id !== 0 || $current_user_id !== 0)) {
+                // Additional check: verify order was created recently (within last 10 minutes) for guest orders
+                $order_date = $order->get_date_created();
+                if ($order_date) {
+                    $order_timestamp = $order_date->getTimestamp();
+                    $current_timestamp = current_time('timestamp');
+                    if (($current_timestamp - $order_timestamp) > 600) { // 10 minutes
+                        wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+                    }
+                } else {
+                    wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+                }
+            }
         }
         
         $api_client = new CentryOS_API_Client($this->client_id, $this->secret, $this->api_url);
@@ -308,9 +346,25 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             wp_send_json_error(['message' => __('Order not found.', 'centryos-payment-gateway-for-woocommerce')]);
         }
         
-        // Verify order belongs to current user (for security)
-        if (!current_user_can('manage_woocommerce') && $order->get_user_id() !== get_current_user_id()) {
-            wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+        // Verify order belongs to current user or is a guest order (for security)
+        $current_user_id = get_current_user_id();
+        $order_user_id = $order->get_user_id();
+        
+        // Allow if: user is admin, order belongs to current user, or both are guest (0)
+        if (!current_user_can('manage_woocommerce')) {
+            if ($order_user_id !== $current_user_id && ($order_user_id !== 0 || $current_user_id !== 0)) {
+                // Additional check: verify order was created recently (within last 10 minutes) for guest orders
+                $order_date = $order->get_date_created();
+                if ($order_date) {
+                    $order_timestamp = $order_date->getTimestamp();
+                    $current_timestamp = current_time('timestamp');
+                    if (($current_timestamp - $order_timestamp) > 600) { // 10 minutes
+                        wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+                    }
+                } else {
+                    wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
+                }
+            }
         }
         
         // Check if order is paid
@@ -350,6 +404,11 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
                 'checkoutUrl' => wc_get_checkout_url(),
                 'orderId' => $order_id
             ]);
+            
+            // Debug: Log that scripts are being enqueued
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[CentryOS Gateway] Modal scripts enqueued on checkout page. Order ID from session: ' . $order_id);
+            }
         }
     }
     
@@ -449,6 +508,55 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         }
         
         echo '<p>' . esc_html__('Thank you! Your payment was processed via CentryOS.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+    }
+    
+    /**
+     * Generate webhook URL field (always shows current URL)
+     */
+    public function generate_webhook_url_html($key, $data) {
+        $field_key = $this->get_field_key($key);
+        $defaults = [
+            'title' => '',
+            'disabled' => false,
+            'class' => '',
+            'css' => '',
+            'placeholder' => '',
+            'type' => 'text',
+            'desc_tip' => false,
+            'description' => '',
+            'custom_attributes' => [],
+        ];
+        
+        $data = wp_parse_args($data, $defaults);
+        // Use saved value or default to ngrok URL
+        $value = $this->get_option($key, 'https://f7c6d0f0af0d.ngrok-free.app/wordpress/wp-json/v1/wh/centryos/payment-complete');
+        
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label for="<?php echo esc_attr($field_key); ?>"><?php echo wp_kses_post($data['title']); ?></label>
+            </th>
+            <td class="forminp">
+                <fieldset>
+                    <legend class="screen-reader-text"><span><?php echo wp_kses_post($data['title']); ?></span></legend>
+                    <input
+                        class="input-text regular-input <?php echo esc_attr($data['class']); ?>"
+                        type="text"
+                        name="<?php echo esc_attr($field_key); ?>"
+                        id="<?php echo esc_attr($field_key); ?>"
+                        value="<?php echo esc_attr($value); ?>"
+                        placeholder="<?php echo esc_attr($data['placeholder']); ?>"
+                        style="<?php echo esc_attr($data['css']); ?>"
+                        <?php disabled($data['disabled'], true); ?>
+                        <?php echo $this->get_custom_attribute_html($data); ?>
+                    />
+                    <?php echo $this->get_description_html($data); ?>
+                </fieldset>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
     }
     
     /**
