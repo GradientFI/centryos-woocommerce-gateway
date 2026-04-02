@@ -16,6 +16,7 @@ class CentryOS_API_Client {
     
     const JWT_ENDPOINT_PATH = '/v1/ext/jwt/generate-token';
     const PAYMENT_LINK_ENDPOINT_PATH = '/v1/ext/collections/payment-link';
+    const REFUND_ENDPOINT_PATH = '/v1/ext/transaction/%s/refund-request';
     
     /**
      * API Base URLs for different environments
@@ -69,6 +70,14 @@ class CentryOS_API_Client {
     private function get_payment_link_endpoint() {
         $base_url = self::$api_base_urls[$this->environment]['liquidity'];
         return $base_url . self::PAYMENT_LINK_ENDPOINT_PATH;
+    }
+
+    /**
+     * Get full refund endpoint URL for a given transaction
+     */
+    private function get_refund_endpoint( $transaction_id ) {
+        $base_url = self::$api_base_urls[$this->environment]['liquidity'];
+        return $base_url . sprintf( self::REFUND_ENDPOINT_PATH, $transaction_id );
     }
     
     /**
@@ -144,6 +153,53 @@ class CentryOS_API_Client {
         return new WP_Error('create_failed', __('Failed to create payment link.', 'centryos-payment-gateway-for-woocommerce'));
     }
     
+    /**
+     * Submit a refund request for a transaction
+     *
+     * @param string $transaction_id CentryOS transaction ID
+     * @param float  $amount         Refund amount
+     * @param string $reason         Optional refund reason
+     * @return array|WP_Error        Parsed response data or error
+     */
+    public function create_refund( $transaction_id, $amount, $reason = '' ) {
+        $token = $this->generate_jwt();
+
+        if ( is_wp_error( $token ) ) {
+            return $token;
+        }
+
+        $payload = [ 'amount' => floatval( $amount ) ];
+        if ( ! empty( $reason ) ) {
+            $payload['reason'] = $reason;
+        }
+
+        $response = wp_remote_post( $this->get_refund_endpoint( $transaction_id ), [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type'  => 'application/json',
+            ],
+            'body'    => wp_json_encode( $payload ),
+            'timeout' => 20,
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            $this->log_error( 'Refund request failed', $response );
+            return $response;
+        }
+
+        $http_code = wp_remote_retrieve_response_code( $response );
+        $body      = wp_remote_retrieve_body( $response );
+        $data      = json_decode( $body, true );
+
+        if ( $http_code < 200 || $http_code >= 300 ) {
+            $message = isset( $data['message'] ) ? $data['message'] : __( 'Refund request failed.', 'centryos-payment-gateway-for-woocommerce' );
+            $this->log_error( 'Refund API error', $body );
+            return new WP_Error( 'refund_failed', $message );
+        }
+
+        return isset( $data['data'] ) ? $data['data'] : [];
+    }
+
     /**
      * Log error for debugging
      * 
