@@ -27,8 +27,8 @@ class CentryOS_API_Client {
             'liquidity' => 'https://staging-api.liquidity.walletos.xyz'
         ],
         'production' => [
-            'accounts' => 'https://api.accounts.walletos.xyz',
-            'liquidity' => 'https://api.liquidity.walletos.xyz'
+            'accounts' => 'https://user-accounts-api.centryos.xyz',
+            'liquidity' => 'https://ledger-api.centryos.xyz'
         ]
     ];
     
