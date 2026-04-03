@@ -20,7 +20,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->method_title = __('CentryOS Payment Gateway', 'centryos-payment-gateway-for-woocommerce');
         $this->method_description = __('Accept payments via CentryOS hosted payment links.', 'centryos-payment-gateway-for-woocommerce');
         $this->has_fields = false;
-        $this->supports = ['products'];
+        $this->supports = [ 'products', 'refunds' ];
         
         $this->init_form_fields();
         $this->init_settings();
@@ -240,6 +240,53 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         return $payment_url;
     }
     
+    /**
+     * Process refund
+     *
+     * @param int    $order_id Order ID
+     * @param float  $amount   Refund amount
+     * @param string $reason   Refund reason
+     * @return bool|WP_Error True on success, WP_Error on failure
+     */
+    public function process_refund( $order_id, $amount = null, $reason = '' ) {
+        $order = wc_get_order( $order_id );
+
+        if ( ! $order ) {
+            return new WP_Error( 'invalid_order', __( 'Order not found.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
+        $transaction_id = $order->get_meta( '_centryos_transaction_id' );
+
+        if ( empty( $transaction_id ) ) {
+            return new WP_Error( 'no_transaction_id', __( 'No CentryOS transaction ID found for this order.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
+        $api_client = new CentryOS_API_Client( $this->client_id, $this->secret, $this->api_url );
+        $result     = $api_client->create_refund( $transaction_id, $amount, $reason );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        $note = sprintf(
+            // translators: 1: refund amount with currency, 2: original transaction ID
+            __( 'Refund of %1$s submitted to CentryOS for transaction %2$s.', 'centryos-payment-gateway-for-woocommerce' ),
+            wc_price( $amount ),
+            $transaction_id
+        );
+
+        if ( ! empty( $result['refundId'] ) ) {
+            $order->add_meta_data( '_centryos_refund_id', $result['refundId'], false );
+            $order->save();
+            // translators: refund transaction ID returned by CentryOS
+            $note .= ' ' . sprintf( __( 'Refund ID: %s', 'centryos-payment-gateway-for-woocommerce' ), $result['refundId'] );
+        }
+
+        $order->add_order_note( $note );
+
+        return true;
+    }
+
     /**
      * Thank you page
      */
