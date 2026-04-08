@@ -82,21 +82,33 @@ class CentryOS_Webhook_Handler
         ], 404);
     }
 
+    // Skip duplicate processing for already-paid orders
+    if ($order->is_paid()) {
+        return new WP_REST_Response([
+            'success' => true,
+            'message' => 'Order already paid, skipping duplicate webhook'
+        ], 200);
+    }
+
     // Check payment status
     if (self::is_payment_successful($data)) {
         return self::process_successful_payment($order, $data);
     }
 
-    // Payment not successful
-    // translators: %s: JSON encoded webhook data
-    $order->add_order_note(sprintf(
-        __('Webhook received (payment not successful): %s', 'centryos-payment-gateway-for-woocommerce'),
-        wp_json_encode($data)
+    // Payment not successful — update order to failed and restore stock
+    $order->update_status('failed', sprintf(
+        // translators: %s: Payment status from webhook
+        __('Payment failed via CentryOS webhook. Status: %s', 'centryos-payment-gateway-for-woocommerce'),
+        $data['status'] ?? 'unknown'
     ));
+
+    wc_increase_stock_levels($order->get_id());
+
+    do_action('centryos_webhook_payment_failed', $order->get_id(), $data);
 
     return new WP_REST_Response([
         'success' => true,
-        'message' => 'Webhook received but payment not successful',
+        'message' => 'Webhook received, order marked as failed',
         'status'  => $data['status'] ?? 'unknown'
     ], 200);
   }

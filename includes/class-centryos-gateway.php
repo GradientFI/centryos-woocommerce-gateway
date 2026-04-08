@@ -290,11 +290,16 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     /**
      * Thank you page
      */
-    public function thankyou_page() {
-        echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+    public function thankyou_page($order_id) {
+        $order = wc_get_order($order_id);
+        if ($order && $order->has_status('failed')) {
+            echo '<p>' . esc_html__('Your payment was not completed. Please try again or contact support.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+        } else {
+            echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+        }
     }
     
-    /**
+/**
      * Display payment fields
      */
     public function payment_fields() {
