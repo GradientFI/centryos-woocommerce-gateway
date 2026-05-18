@@ -158,7 +158,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             );
             return ['result' => 'failure'];
         }
-        
+         
         // Add customer information as query strings
         $payment_url = $this->add_customer_query_strings($payment_url, $order);
         
@@ -176,8 +176,10 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
      * Do not change the payload structure
      */
     private function build_payload($order) {
+        $currency = get_woocommerce_currency();
+
         return [
-            'currency' => get_woocommerce_currency(),
+            'currency' => $currency,
             'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+1 day')),
             // translators: %s: Order number
             'name' => sprintf(__('Order #%s', 'centryos-payment-gateway-for-woocommerce'), $order->get_order_number()),
@@ -189,6 +191,8 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             'customerPays' => ($this->customer_pays === 'yes'),
             'acceptedPaymentOptions' => $this->payment_options,
             'dataCollections' => ['Email', 'First name', 'Last name', 'Phone number'],
+            'itemDeliveryAddress' => $this->build_item_delivery_address($order),
+            'cartItems' => $this->build_cart_items($order, $currency),
             'brandingConfig' => [
                 'hideCentryTag' => ($this->hide_centry_tag === 'yes'),
                 'colors' => [
@@ -198,8 +202,51 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
                     'pale' => $this->color_pale
                 ]
             ]
-           
+
         ];
+    }
+
+    /**
+     * Build a comma-separated delivery address from the order's shipping address,
+     * falling back to the billing address when shipping is empty.
+     */
+    private function build_item_delivery_address($order) {
+        $type = $order->get_shipping_address_1() || $order->get_shipping_city() ? 'shipping' : 'billing';
+
+        $parts = array_filter([
+            $type === 'shipping' ? $order->get_shipping_address_1() : $order->get_billing_address_1(),
+            $type === 'shipping' ? $order->get_shipping_address_2() : $order->get_billing_address_2(),
+            $type === 'shipping' ? $order->get_shipping_city()      : $order->get_billing_city(),
+            $type === 'shipping' ? $order->get_shipping_state()     : $order->get_billing_state(),
+            $type === 'shipping' ? $order->get_shipping_postcode()  : $order->get_billing_postcode(),
+            $type === 'shipping' ? $order->get_shipping_country()   : $order->get_billing_country(),
+        ]);
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Build cart items array from order line items
+     */
+    private function build_cart_items($order, $currency) {
+        $items = [];
+
+        foreach ($order->get_items() as $item) {
+            $product     = $item->get_product();
+            $quantity    = $item->get_quantity();
+            $line_total  = floatval($item->get_total());
+            $unit_price  = $quantity > 0 ? $line_total / $quantity : $line_total;
+            $description = $product ? wp_strip_all_tags($product->get_short_description()) : '';
+
+            $items[] = [
+                'name'        => $item->get_name(),
+                'description' => $description,
+                'price'       => round($unit_price, 2),
+                'currency'    => $currency,
+            ];
+        }
+
+        return $items;
     }
     
     /**
