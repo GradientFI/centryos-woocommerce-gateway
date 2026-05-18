@@ -100,18 +100,20 @@ class CentryOS_API_Client {
         ]);
     
         if (is_wp_error($response)) {
-            $this->log_error('JWT generation failed', $response);
+            $this->log_event('error', 'JWT generation failed', [
+                'wp_error' => $response->get_error_messages(),
+            ]);
             return $response;
         }
-    
+
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
-    
+
         if (isset($data['data']['token'])) {
             return $data['data']['token'];
         }
-        
-        $this->log_error('JWT response invalid', $body);
+
+        $this->log_event('error', 'JWT response invalid', ['body' => $body]);
         return new WP_Error('jwt_failed', __('Failed to generate JWT token.', 'centryos-payment-gateway-for-woocommerce'));
     }
     
@@ -123,12 +125,18 @@ class CentryOS_API_Client {
      */
     public function create_payment_link($payload) {
         $token = $this->generate_jwt();
-        
+
         if (is_wp_error($token)) {
             return $token;
         }
-        
-        $response = wp_remote_post($this->get_payment_link_endpoint(), [
+
+        $endpoint = $this->get_payment_link_endpoint();
+        $this->log_event('info', 'create_payment_link request', [
+            'endpoint' => $endpoint,
+            'payload'  => $payload,
+        ]);
+
+        $response = wp_remote_post($endpoint, [
             'headers' => [
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type' => 'application/json'
@@ -136,20 +144,31 @@ class CentryOS_API_Client {
             'body' => wp_json_encode($payload),
             'timeout' => 20
         ]);
-        
+
         if (is_wp_error($response)) {
-            $this->log_error('Payment link creation failed', $response);
+            $this->log_event('error', 'Payment link creation failed', [
+                'wp_error' => $response->get_error_messages(),
+            ]);
             return $response;
         }
-        
+
+        $http_code = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
-        
+
+        $this->log_event('info', 'create_payment_link response', [
+            'http_code' => $http_code,
+            'body'      => $body,
+        ]);
+
         if (isset($data['data']['url'])) {
             return $data['data']['url'];
         }
-        
-        $this->log_error('Payment link response invalid', $body);
+
+        $this->log_event('error', 'Payment link response invalid', [
+            'http_code' => $http_code,
+            'body'      => $body,
+        ]);
         return new WP_Error('create_failed', __('Failed to create payment link.', 'centryos-payment-gateway-for-woocommerce'));
     }
     
@@ -183,7 +202,9 @@ class CentryOS_API_Client {
         ] );
 
         if ( is_wp_error( $response ) ) {
-            $this->log_error( 'Refund request failed', $response );
+            $this->log_event( 'error', 'Refund request failed', [
+                'wp_error' => $response->get_error_messages(),
+            ] );
             return $response;
         }
 
@@ -193,7 +214,10 @@ class CentryOS_API_Client {
 
         if ( $http_code < 200 || $http_code >= 300 ) {
             $message = isset( $data['message'] ) ? $data['message'] : __( 'Refund request failed.', 'centryos-payment-gateway-for-woocommerce' );
-            $this->log_error( 'Refund API error', $body );
+            $this->log_event( 'error', 'Refund API error', [
+                'http_code' => $http_code,
+                'body'      => $body,
+            ] );
             return new WP_Error( 'refund_failed', $message );
         }
 
@@ -201,18 +225,24 @@ class CentryOS_API_Client {
     }
 
     /**
-     * Log error for debugging
-     * 
-     * @param string $message Error message
-     * @param mixed $data Additional data
+     * Write a structured entry to PHP's error_log and (when available) the
+     * WooCommerce log (Status > Logs > centryos-gateway). Logging is unconditional
+     * so events are visible without WP_DEBUG.
      */
-    private function log_error($message, $data) {
-        if (defined('WP_DEBUG') && WP_DEBUG && defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
-            // Only log if both WP_DEBUG and WP_DEBUG_LOG are enabled
-            if (is_array($data) || is_object($data)) {
-                error_log(sprintf('[CentryOS Gateway] %s: %s', $message, wp_json_encode($data)));
-            } else {
-                error_log(sprintf('[CentryOS Gateway] %s: %s', $message, $data));
+    private function log_event($level, $message, array $context = []) {
+        $line = $message;
+        if (!empty($context)) {
+            $encoded = function_exists('wp_json_encode') ? wp_json_encode($context) : json_encode($context);
+            $line   .= ' ' . $encoded;
+        }
+
+        error_log('[CentryOS Gateway][' . $level . '] ' . $line);
+
+        if (function_exists('wc_get_logger')) {
+            try {
+                wc_get_logger()->log($level, $line, ['source' => 'centryos-gateway']);
+            } catch (\Throwable $e) {
+                error_log('[CentryOS Gateway][error] wc_get_logger threw: ' . $e->getMessage());
             }
         }
     }
