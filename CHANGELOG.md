@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (Future changes will be listed here)
 
+## [1.3.0] - 2026-05-18
+
+### Added
+- Refund support via the gateway
+- Cart items and address details forwarded with payment link requests
+- Unconditional webhook logging to PHP `error_log` and WooCommerce Status > Logs (source: `centryos-webhook`); no longer gated by `WP_DEBUG`
+
+### Changed
+- Webhook handler now requires an explicit failure status (`FAILED`, `FAILURE`, `DECLINED`, `CANCELLED`, `CANCELED`, `EXPIRED`) before marking an order failed. Unknown or pending statuses are acknowledged with HTTP 200 without mutating the order
+- Failed-payment processing is idempotent — duplicate failure webhooks for an already-failed/cancelled/refunded order short-circuit without re-running `update_status`, `wc_increase_stock_levels`, or the `centryos_webhook_payment_failed` action
+- Success-status detection normalized to a single case-insensitive check
+- JSON payload validation runs after signature verification and returns an explicit `400 Invalid JSON payload` on malformed bodies
+
+### Removed
+- Dead `get_credential` instance method on the all-static `CentryOS_Webhook_Handler` class
+
 ## [1.2.0] - 2025-11-12
 
 ### Added
@@ -87,11 +103,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **1.3.0** - Refunds, payment-link cart/address payload, hardened webhook handling and unconditional logging
 - **1.2.0** - API environment selector, blocks compatibility fixes, form fields improvements
 - **1.1.0** - Major refactoring with improved security and structure
 - **1.0.3** - Initial public release
 
 ## Upgrade Notes
+
+### Upgrading to 1.3.0
+
+- **Breaking Changes**: Webhook semantics changed — previously, *any* non-success webhook payload would mark the order as failed. The handler now only marks orders failed on explicit failure statuses; pending/unknown statuses return 200 without changing order state. If the CentryOS sender relies on the old behavior to fail orders via custom statuses, those statuses must be added to the failure allow-list in `is_payment_failed()`.
+- **Recommended Actions**:
+  - Verify webhook URL on the CentryOS side: `/wp-json/v1/wh/centryos/payment-complete`
+  - Confirm `CENTRYOS_WEBHOOK_SECRET` is defined in `wp-config.php`
+  - Check **WooCommerce > Status > Logs** (source: `centryos-webhook`) after the first webhook hit to confirm logging is wired
+- **Deprecations**: None
 
 ### Upgrading to 1.2.0
 
