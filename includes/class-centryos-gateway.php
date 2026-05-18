@@ -236,7 +236,16 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             $quantity    = $item->get_quantity();
             $line_total  = floatval($item->get_total());
             $unit_price  = $quantity > 0 ? $line_total / $quantity : $line_total;
-            $description = $product ? wp_strip_all_tags($product->get_short_description()) : '';
+            $description = '';
+            if ($product) {
+                $description = wp_strip_all_tags($product->get_short_description());
+                if ($description === '') {
+                    $description = wp_strip_all_tags($product->get_description());
+                }
+            }
+            if ($description === '') {
+                $description = $item->get_name();
+            }
 
             $items[] = [
                 'name'        => $item->get_name(),
