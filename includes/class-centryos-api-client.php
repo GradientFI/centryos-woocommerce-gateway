@@ -23,8 +23,8 @@ class CentryOS_API_Client {
      */
     private static $api_base_urls = [
         'staging' => [
-            'accounts' => 'https://staging-api.accounts.walletos.xyz',
-            'liquidity' => 'https://staging-api.liquidity.walletos.xyz'
+            'accounts' => 'https://account-staging-api.centryos.xyz',
+            'liquidity' => 'https://liquidity-staging-api.centryos.xyz'
         ],
         'production' => [
             'accounts' => 'https://user-accounts-api.centryos.xyz',
