@@ -41,10 +41,20 @@ class CentryOS_Webhook_Handler
     $body = $request->get_body();
     $data = json_decode($body, true);
 
-    self::log('info', 'received', ['body' => $body]);
+    $signature = $request->get_header('signature');
+
+    self::log('info', 'received', [
+      'method'      => $request->get_method(),
+      'route'       => $request->get_route(),
+      'remote_ip'   => self::client_ip(),
+      'signature'   => $signature !== null ? substr($signature, 0, 16) . '…' : null,
+      'event_type'  => is_array($data) ? ($data['eventType'] ?? null) : null,
+      'status'      => is_array($data) ? ($data['status'] ?? null) : null,
+      'order_id'    => is_array($data) ? ($data['payload']['orderId'] ?? null) : null,
+      'body'        => $body,
+    ]);
 
     // Verify webhook signature
-    $signature = $request->get_header('signature');
     $secret = defined('CENTRYOS_WEBHOOK_SECRET') ? CENTRYOS_WEBHOOK_SECRET : '';
 
     if (empty($secret)) {
@@ -157,6 +167,25 @@ class CentryOS_Webhook_Handler
   {
     $computed_signature = hash_hmac('sha512', $payload, $secret);
     return hash_equals($computed_signature, $signature);
+  }
+
+  /**
+   * Best-effort client IP for log context. Honors common proxy headers but
+   * does not authenticate them — purely informational.
+   */
+  private static function client_ip()
+  {
+    foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'] as $key) {
+      if (!empty($_SERVER[$key])) {
+        $value = is_string($_SERVER[$key]) ? $_SERVER[$key] : '';
+        // X-Forwarded-For may be a comma list; take the first entry.
+        $first = trim(explode(',', $value)[0]);
+        if ($first !== '') {
+          return $first;
+        }
+      }
+    }
+    return null;
   }
 
   /**
