@@ -24,16 +24,15 @@
         }
     }
 
+    var SUCCESS_EVENT = 'centryos_payment_complete';
+
     function isSuccessMessage(data) {
         if (!data) return false;
         if (typeof data === 'string') {
-            return data === 'centryos:payment_success' || data === 'payment_success';
+            return data === SUCCESS_EVENT;
         }
         if (typeof data !== 'object') return false;
-        if (data.type === 'centryos:payment_success' || data.type === 'payment_success') return true;
-        if (data.status === 'success' || data.status === 'SUCCESS') return true;
-        if (data.event === 'payment.success' || data.event === 'payment_completed') return true;
-        return false;
+        return data.type === SUCCESS_EVENT || data.event === SUCCESS_EVENT;
     }
 
     window.addEventListener('message', function (event) {
