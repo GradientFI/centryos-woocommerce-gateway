@@ -35,8 +35,9 @@ Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkou
 
 == Changelog ==
 
-= Unreleased =
-* Added: Checkout Mode setting — choose between the existing redirect flow and a new embedded mode that renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page. On success the buyer is redirected to the standard order-received page. Requires CentryOS framing to be enabled for your domain.
+= 1.4.0 =
+* Added: Checkout Mode setting — choose between the existing redirect flow and a new embedded mode that renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page. On success the buyer is redirected to the standard order-received page. Success is detected via a `centryos_payment_complete` postMessage event with an AJAX status poll as a fallback. Requires CentryOS framing to be enabled for your domain.
+* Changed: in embedded mode, new orders are placed in Pending payment instead of On hold so the order-pay page can render. Redirect mode is unchanged.
 
 = 1.3.0 =
 * Added: refund support via the gateway
@@ -56,6 +57,9 @@ Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkou
 * Initial release
 
 == Upgrade Notice ==
+
+= 1.4.0 =
+Adds an opt-in embedded checkout mode that keeps buyers on your site inside an iframe. Existing installs default to the redirect flow — no action required unless you want to enable embedded.
 
 = 1.3.0 =
 Behavior change: webhooks with non-success/non-failure statuses no longer mark orders as failed. Failure handling is now idempotent. All webhook events are logged unconditionally.

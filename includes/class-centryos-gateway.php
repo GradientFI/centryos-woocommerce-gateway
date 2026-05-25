@@ -179,10 +179,10 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         wc_reduce_stock_levels($order_id);
 
         if ($this->checkout_mode === 'embedded') {
-            // Keep the order in 'pending' so WC_Order::needs_payment() stays true and
-            // the woocommerce_receipt_{$id} hook fires on the order-pay page. The
+            // Force 'pending' so WC_Order::needs_payment() stays true and the
+            // woocommerce_receipt_{$id} hook fires on the order-pay page. The
             // webhook handler progresses the order to processing/completed.
-            $order->add_order_note(__('Awaiting payment via embedded CentryOS checkout', 'centryos-payment-gateway-for-woocommerce'));
+            $order->update_status('pending', __('Awaiting payment via embedded CentryOS checkout', 'centryos-payment-gateway-for-woocommerce'));
             $order->update_meta_data('_centryos_payment_url', $payment_url);
             $order->save();
 
@@ -192,7 +192,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             ];
         }
 
-        $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
+        $order->update_status('pending', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
 
         return [
             'result' => 'success',
