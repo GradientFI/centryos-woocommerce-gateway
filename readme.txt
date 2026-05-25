@@ -35,6 +35,9 @@ Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkou
 
 == Changelog ==
 
+= Unreleased =
+* Added: Checkout Mode setting — choose between the existing redirect flow and a new embedded mode that renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page. On success the buyer is redirected to the standard order-received page. Requires CentryOS framing to be enabled for your domain.
+
 = 1.3.0 =
 * Added: refund support via the gateway
 * Added: cart items and address details forwarded with payment links
