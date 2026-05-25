@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (Future changes will be listed here)
+- Embedded checkout mode: a new `Checkout Mode` setting renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page instead of redirecting off-site. On payment success the buyer is redirected to the standard WooCommerce order-received page. Detection uses a `postMessage` listener (fast path) with an AJAX poll of the order status as a resilient fallback once the webhook flips the order to paid. Requires CentryOS framing to be enabled for the merchant origin.
 
 ## [1.3.0] - 2026-05-18
 

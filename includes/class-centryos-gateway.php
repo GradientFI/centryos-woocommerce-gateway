@@ -39,9 +39,13 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->color_subdued = $this->get_option('color_subdued', '#A855F7');
         $this->color_disabled = $this->get_option('color_disabled', '#E9D5FF');
         $this->color_pale = $this->get_option('color_pale', '#F3E8FF');
-        
+        $this->checkout_mode = $this->get_option('checkout_mode', 'redirect');
+
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
         add_action('woocommerce_thankyou_' . $this->id, [$this, 'thankyou_page']);
+        add_action('woocommerce_receipt_' . $this->id, [$this, 'receipt_page']);
+        add_action('wp_ajax_centryos_check_order_status', [$this, 'ajax_check_order_status']);
+        add_action('wp_ajax_nopriv_centryos_check_order_status', [$this, 'ajax_check_order_status']);
     }
     
     /**
@@ -89,6 +93,16 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               ],
               'default' => 'staging',
               'description' => 'Select the API environment to use'
+          ],
+          'checkout_mode' => [
+              'title' => 'Checkout Mode',
+              'type'  => 'select',
+              'options' => [
+                  'redirect' => 'Redirect to CentryOS (default)',
+                  'embedded' => 'Embedded on order page',
+              ],
+              'default' => 'redirect',
+              'description' => 'Embedded keeps the buyer on your site inside an iframe. Requires CentryOS framing to be enabled for your domain.',
           ],
           'customer_pays' => [
               'title' => 'Customer Pays',
@@ -161,10 +175,20 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
          
         // Add customer information as query strings
         $payment_url = $this->add_customer_query_strings($payment_url, $order);
-        
+
         $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
         wc_reduce_stock_levels($order_id);
-        
+
+        if ($this->checkout_mode === 'embedded') {
+            $order->update_meta_data('_centryos_payment_url', $payment_url);
+            $order->save();
+
+            return [
+                'result'   => 'success',
+                'redirect' => $order->get_checkout_payment_url(true),
+            ];
+        }
+
         return [
             'result' => 'success',
             'redirect' => $payment_url
@@ -341,6 +365,78 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $order->add_order_note( $note );
 
         return true;
+    }
+
+    /**
+     * Render the embedded CentryOS checkout on the WooCommerce order-pay page.
+     * Hooked into woocommerce_receipt_{$gateway_id}; only fires when checkout_mode = embedded.
+     */
+    public function receipt_page($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        $payment_url = $order->get_meta('_centryos_payment_url');
+        if (!$payment_url) {
+            echo '<p>' . esc_html__('Payment session is missing. Please return to checkout and try again.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+            echo '<p><a class="button" href="' . esc_url(wc_get_checkout_url()) . '">' . esc_html__('Return to checkout', 'centryos-payment-gateway-for-woocommerce') . '</a></p>';
+            return;
+        }
+
+        $scheme = wp_parse_url($payment_url, PHP_URL_SCHEME);
+        $host   = wp_parse_url($payment_url, PHP_URL_HOST);
+        $centryos_origin = ($scheme && $host) ? $scheme . '://' . $host : '';
+
+        wp_enqueue_script(
+            'centryos-embed',
+            CENTRYOS_GATEWAY_PLUGIN_URL . 'assets/js/centryos-embed.js',
+            [],
+            CENTRYOS_GATEWAY_VERSION,
+            true
+        );
+
+        wp_localize_script('centryos-embed', 'CentryOSEmbed', [
+            'orderId'        => $order->get_id(),
+            'returnUrl'      => $this->get_return_url($order),
+            'statusEndpoint' => admin_url('admin-ajax.php'),
+            'nonce'          => wp_create_nonce('centryos_check_order_status_' . $order->get_id()),
+            'centryosOrigin' => $centryos_origin,
+            'pollIntervalMs' => 2500,
+            'maxPollAttempts' => 240,
+        ]);
+
+        ?>
+        <div id="centryos-embed-wrapper" style="margin:1em 0;">
+            <iframe id="centryos-embed-frame"
+                    src="<?php echo esc_url($payment_url); ?>"
+                    allow="payment *"
+                    style="width:100%;min-height:720px;border:0;display:block;"></iframe>
+        </div>
+        <?php
+    }
+
+    /**
+     * AJAX handler the embedded iframe polls to detect webhook-driven payment completion.
+     * Returns minimal JSON: { status, paid }. No PII.
+     */
+    public function ajax_check_order_status() {
+        $order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
+        $nonce    = isset($_GET['nonce']) ? sanitize_text_field(wp_unslash($_GET['nonce'])) : '';
+
+        if (!$order_id || !wp_verify_nonce($nonce, 'centryos_check_order_status_' . $order_id)) {
+            wp_send_json_error(['message' => 'invalid_request'], 400);
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error(['message' => 'order_not_found'], 404);
+        }
+
+        wp_send_json_success([
+            'status' => $order->get_status(),
+            'paid'   => $order->is_paid(),
+        ]);
     }
 
     /**
