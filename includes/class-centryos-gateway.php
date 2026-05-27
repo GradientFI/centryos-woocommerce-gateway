@@ -412,11 +412,26 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         ]);
 
         ?>
-        <div id="centryos-embed-wrapper" style="margin:1em 0;">
+        <style>
+            #centryos-embed-wrapper {
+                width: 100%;
+                max-width: 100%;
+                margin: 1em 0;
+            }
+            #centryos-embed-frame {
+                display: block;
+                width: 100%;
+                height: 100vh;
+                /* Floor for very short viewports; vh keeps it responsive otherwise. */
+                min-height: 520px;
+                border: 0;
+            }
+        </style>
+        <div id="centryos-embed-wrapper">
             <iframe id="centryos-embed-frame"
                     src="<?php echo esc_url($payment_url); ?>"
                     allow="payment *"
-                    style="width:100%;min-height:720px;border:0;display:block;"></iframe>
+                    scrolling="auto"></iframe>
         </div>
         <?php
     }
