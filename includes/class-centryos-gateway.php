@@ -417,10 +417,14 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
                 width: 100%;
                 max-width: 100%;
                 margin: 1em 0;
+                /* Clip the iframe's native scrollbar gutter (see iframe width below). */
+                overflow: hidden;
             }
             #centryos-embed-frame {
                 display: block;
-                width: 100%;
+                /* Overshoot the wrapper so the cross-origin scrollbar falls into the
+                   clipped region and is hidden; content still scrolls via wheel/touch. */
+                width: calc(100% + 20px);
                 height: 100vh;
                 /* Floor for very short viewports; vh keeps it responsive otherwise. */
                 min-height: 520px;
