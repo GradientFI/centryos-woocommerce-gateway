@@ -340,14 +340,27 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             return new WP_Error( 'invalid_order', __( 'Order not found.', 'centryos-payment-gateway-for-woocommerce' ) );
         }
 
+        // Block duplicate requests while a refund is already awaiting approval on
+        // CentryOS. Authoritative guard — covers the REST API and any bypass of the
+        // admin UI button-disable in CentryOS_Refund_Status.
+        if ( class_exists( 'CentryOS_Refund_Status' ) && $order->get_status() === CentryOS_Refund_Status::STATUS ) {
+            return new WP_Error( 'refund_pending', __( 'A refund for this order is already awaiting approval on CentryOS.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
         $transaction_id = $order->get_meta( '_centryos_transaction_id' );
 
         if ( empty( $transaction_id ) ) {
             return new WP_Error( 'no_transaction_id', __( 'No CentryOS transaction ID found for this order.', 'centryos-payment-gateway-for-woocommerce' ) );
         }
 
+        // CentryOS refunds the full original charge unless the request is flagged
+        // partial, so tell it whenever we're refunding less than the order total.
+        $order_total   = (float) $order->get_total();
+        $refund_amount = (float) $amount;
+        $is_partial    = $refund_amount > 0 && round( $refund_amount, 2 ) < round( $order_total, 2 );
+
         $api_client = new CentryOS_API_Client( $this->client_id, $this->secret, $this->api_url );
-        $result     = $api_client->create_refund( $transaction_id, $amount, $reason );
+        $result     = $api_client->create_refund( $transaction_id, $amount, $reason, $is_partial );
 
         if ( is_wp_error( $result ) ) {
             return $result;
@@ -355,7 +368,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
 
         $note = sprintf(
             // translators: 1: refund amount with currency, 2: original transaction ID
-            __( 'Refund of %1$s submitted to CentryOS for transaction %2$s.', 'centryos-payment-gateway-for-woocommerce' ),
+            __( 'Refund of %1$s submitted to CentryOS for transaction %2$s, pending approval.', 'centryos-payment-gateway-for-woocommerce' ),
             wc_price( $amount ),
             $transaction_id
         );
