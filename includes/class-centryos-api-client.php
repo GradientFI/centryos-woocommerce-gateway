@@ -17,6 +17,8 @@ class CentryOS_API_Client {
     const JWT_ENDPOINT_PATH = '/v1/ext/jwt/generate-token';
     const PAYMENT_LINK_ENDPOINT_PATH = '/v1/ext/collections/payment-link';
     const REFUND_ENDPOINT_PATH = '/v1/ext/transaction/%s/refund-request';
+    const RECURRING_GET_ENDPOINT_PATH = '/v1/ext/collections/recurring/%s';
+    const RECURRING_CANCEL_ENDPOINT_PATH = '/v1/ext/collections/recurring/%s/cancel';
     
     /**
      * API Base URLs for different environments
@@ -219,6 +221,107 @@ class CentryOS_API_Client {
                 'body'      => $body,
             ] );
             return new WP_Error( 'refund_failed', $message );
+        }
+
+        return isset( $data['data'] ) ? $data['data'] : [];
+    }
+
+    /**
+     * Cancel a recurring payment (subscription).
+     *
+     * @param string $subscription_id    CentryOS recurring payment id.
+     * @param bool   $cancel_at_period_end When true (default) the subscription
+     *                                      stays active until the current paid
+     *                                      period ends; false cancels immediately.
+     * @return array|WP_Error             Parsed response data or error.
+     */
+    public function cancel_subscription( $subscription_id, $cancel_at_period_end = true ) {
+        $token = $this->generate_jwt();
+
+        if ( is_wp_error( $token ) ) {
+            return $token;
+        }
+
+        $base_url = self::$api_base_urls[$this->environment]['liquidity'];
+        $endpoint = $base_url . sprintf( self::RECURRING_CANCEL_ENDPOINT_PATH, rawurlencode( $subscription_id ) );
+
+        $this->log_event( 'info', 'cancel_subscription request', [
+            'endpoint'           => $endpoint,
+            'subscription_id'    => $subscription_id,
+            'cancelAtPeriodEnd'  => (bool) $cancel_at_period_end,
+        ] );
+
+        $response = wp_remote_post( $endpoint, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type'  => 'application/json',
+            ],
+            'body'    => wp_json_encode( [ 'cancelAtPeriodEnd' => (bool) $cancel_at_period_end ] ),
+            'timeout' => 20,
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            $this->log_event( 'error', 'cancel_subscription failed', [
+                'wp_error' => $response->get_error_messages(),
+            ] );
+            return $response;
+        }
+
+        $http_code = wp_remote_retrieve_response_code( $response );
+        $body      = wp_remote_retrieve_body( $response );
+        $data      = json_decode( $body, true );
+
+        $this->log_event( 'info', 'cancel_subscription response', [
+            'http_code' => $http_code,
+            'body'      => $body,
+        ] );
+
+        if ( $http_code < 200 || $http_code >= 300 ) {
+            $message = isset( $data['message'] ) ? $data['message'] : __( 'Failed to cancel subscription.', 'centryos-payment-gateway-for-woocommerce' );
+            return new WP_Error( 'cancel_failed', $message );
+        }
+
+        return isset( $data['data'] ) ? $data['data'] : [];
+    }
+
+    /**
+     * Fetch a single recurring payment for on-demand status sync.
+     *
+     * @param string $subscription_id CentryOS recurring payment id.
+     * @return array|WP_Error         Parsed response data or error.
+     */
+    public function get_recurring_payment( $subscription_id ) {
+        $token = $this->generate_jwt();
+
+        if ( is_wp_error( $token ) ) {
+            return $token;
+        }
+
+        $base_url = self::$api_base_urls[$this->environment]['liquidity'];
+        $endpoint = $base_url . sprintf( self::RECURRING_GET_ENDPOINT_PATH, rawurlencode( $subscription_id ) );
+
+        $response = wp_remote_get( $endpoint, [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type'  => 'application/json',
+            ],
+            'timeout' => 20,
+        ] );
+
+        if ( is_wp_error( $response ) ) {
+            $this->log_event( 'error', 'get_recurring_payment failed', [
+                'wp_error' => $response->get_error_messages(),
+            ] );
+            return $response;
+        }
+
+        $http_code = wp_remote_retrieve_response_code( $response );
+        $body      = wp_remote_retrieve_body( $response );
+        $data      = json_decode( $body, true );
+
+        if ( $http_code < 200 || $http_code >= 300 ) {
+            $message = isset( $data['message'] ) ? $data['message'] : __( 'Failed to fetch subscription.', 'centryos-payment-gateway-for-woocommerce' );
+            return new WP_Error( 'get_recurring_failed', $message );
         }
 
         return isset( $data['data'] ) ? $data['data'] : [];
