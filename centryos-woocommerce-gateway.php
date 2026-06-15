@@ -39,12 +39,16 @@ function centryos_gateway_init() {
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-api-client.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-gateway.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-webhook-handler.php';
-    
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-refund-status.php';
+
     // Register payment gateway
     add_filter('woocommerce_payment_gateways', 'centryos_gateway_register');
-    
+
     // Initialize webhook handler
     CentryOS_Webhook_Handler::init();
+
+    // Register the custom "Refund Pending" order status and its admin guards
+    CentryOS_Refund_Status::init();
 }
 add_action('plugins_loaded', 'centryos_gateway_init');
 
