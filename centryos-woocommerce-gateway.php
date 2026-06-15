@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CentryOS Payment Gateway for WooCommerce
  * Description: Accept payments via CentryOS hosted payment links. Fully compatible with WooCommerce Blocks.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: CentryOS
@@ -19,7 +19,8 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('CENTRYOS_GATEWAY_VERSION', '1.4.0');
+define('CENTRYOS_GATEWAY_VERSION', '1.5.0');
+define('CENTRYOS_GATEWAY_DB_VERSION', '1');
 define('CENTRYOS_GATEWAY_PLUGIN_FILE', __FILE__);
 define('CENTRYOS_GATEWAY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CENTRYOS_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -39,6 +40,9 @@ function centryos_gateway_init() {
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-api-client.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-gateway.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-webhook-handler.php';
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-product-subscription.php';
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-subscriptions-store.php';
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-subscriptions-admin.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-refund-status.php';
 
     // Register payment gateway
@@ -47,10 +51,28 @@ function centryos_gateway_init() {
     // Initialize webhook handler
     CentryOS_Webhook_Handler::init();
 
+    // Initialize subscription features
+    CentryOS_Product_Subscription::init();
+    CentryOS_Subscriptions_Admin::init();
+
+    // Ensure the subscriptions table exists / is up to date (covers upgrades
+    // where the activation hook did not run).
+    centryos_gateway_maybe_install_db();
     // Register the custom "Refund Pending" order status and its admin guards
     CentryOS_Refund_Status::init();
 }
 add_action('plugins_loaded', 'centryos_gateway_init');
+
+/**
+ * Create or upgrade the subscriptions table when the stored DB version is behind.
+ */
+function centryos_gateway_maybe_install_db() {
+    if (get_option('centryos_gateway_db_version') === CENTRYOS_GATEWAY_DB_VERSION) {
+        return;
+    }
+    CentryOS_Subscriptions_Store::install();
+    update_option('centryos_gateway_db_version', CENTRYOS_GATEWAY_DB_VERSION);
+}
 
 /**
  * Register the payment gateway
@@ -101,7 +123,12 @@ function centryos_gateway_activate() {
         deactivate_plugins(CENTRYOS_GATEWAY_PLUGIN_BASENAME);
         wp_die('CentryOS Payment Gateway requires WooCommerce to be installed and active.');
     }
-    
+
+    // Create the subscriptions table.
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-subscriptions-store.php';
+    CentryOS_Subscriptions_Store::install();
+    update_option('centryos_gateway_db_version', CENTRYOS_GATEWAY_DB_VERSION);
+
     // Flush rewrite rules
     flush_rewrite_rules();
 }

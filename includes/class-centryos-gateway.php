@@ -207,7 +207,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     private function build_payload($order) {
         $currency = get_woocommerce_currency();
 
-        return [
+        $payload = [
             'currency' => $currency,
             'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+1 day')),
             // translators: %s: Order number
@@ -233,6 +233,59 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             ]
 
         ];
+
+        // When the order contains a subscription product, switch to a recurring
+        // checkout. The top-level `amount` stays the full cart total (charged once
+        // up front); `recurringCharge.amount` carries only the per-cycle rate so
+        // renewals charge that rate and the one-time remainder is folded into the
+        // first invoice by the liquidity-service.
+        $subscription = $this->get_subscription_config_from_order($order);
+        if ($subscription) {
+            $payload['checkoutType'] = 'recurring';
+            $payload['recurringCharge'] = [
+                'type'            => 'subscription',
+                'amount'          => $subscription['rate'],
+                'startDate'       => gmdate('Y-m-d\TH:i:s\Z'),
+                'interval'        => [
+                    'type'  => $subscription['period'],
+                    'count' => $subscription['interval'],
+                ],
+                'trialPeriodDays' => $subscription['trial_days'],
+            ];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Resolve the subscription configuration for an order, if it contains a
+     * subscription product. Cart guardrails ensure at most one subscription
+     * product per order, so the first match is authoritative.
+     *
+     * @param WC_Order $order
+     * @return array|null { rate:float, period:string, interval:int, trial_days:int, product_id:int }
+     */
+    private function get_subscription_config_from_order($order) {
+        if (!class_exists('CentryOS_Product_Subscription')) {
+            return null;
+        }
+
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            $config  = $product ? CentryOS_Product_Subscription::get_config($product) : null;
+            if ($config) {
+                $qty = max(1, (int) $item->get_quantity());
+                return [
+                    'rate'       => round($config['price'] * $qty, 2),
+                    'period'     => $config['period'],
+                    'interval'   => $config['interval'],
+                    'trial_days' => $config['trial_days'],
+                    'product_id' => $product->get_id(),
+                ];
+            }
+        }
+
+        return null;
     }
 
     /**

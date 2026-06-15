@@ -119,6 +119,15 @@ class CentryOS_Webhook_Handler
         'event_type' => $data['eventType'] ?? null,
     ];
 
+    // Subscription lifecycle events reference the originating order but must
+    // bypass the already-paid skip below (renewals fire against a paid order and
+    // their job is to create *new* orders / advance the schedule).
+    $event_type = isset($data['eventType']) ? strtoupper((string) $data['eventType']) : '';
+    if (self::is_recurring_event($event_type)) {
+        self::log('info', 'processing: recurring event', $log_context);
+        return self::handle_recurring_webhook($order, $data, $event_type);
+    }
+
     // Skip duplicate processing for already-paid orders
     if ($order->is_paid()) {
         self::log('info', 'skipped: order already paid', $log_context);
@@ -311,6 +320,292 @@ class CentryOS_Webhook_Handler
       'orderId' => $order->get_id(),
       'transactionId' => $transaction_id
     ], 200);
+  }
+
+  /**
+   * Whether an event is a subscription lifecycle event
+   * (COLLECTION.RECURRING.CREATED / PAID / FAILED / UPDATED / DELETED).
+   */
+  private static function is_recurring_event($event_type)
+  {
+    return strpos((string) $event_type, 'COLLECTION.RECURRING.') === 0;
+  }
+
+  /**
+   * Route a recurring (subscription) webhook to the right processor.
+   *
+   * @param WC_Order $order      Originating order (payload.orderId).
+   * @param array    $data       Decoded webhook body.
+   * @param string   $event_type Uppercased eventType.
+   */
+  private static function handle_recurring_webhook($order, $data, $event_type)
+  {
+    $payload   = isset($data['payload']) && is_array($data['payload']) ? $data['payload'] : [];
+    $recurring = isset($payload['recurringCharge']) && is_array($payload['recurringCharge']) ? $payload['recurringCharge'] : [];
+    $subscription_id = $recurring['subscriptionId'] ?? '';
+
+    if (empty($subscription_id)) {
+      self::log('warning', 'recurring event missing subscriptionId', ['event_type' => $event_type]);
+      return new WP_REST_Response(['success' => true, 'message' => 'Missing subscriptionId, acknowledged'], 200);
+    }
+
+    if (!class_exists('CentryOS_Subscriptions_Store')) {
+      self::log('error', 'subscriptions store unavailable');
+      return new WP_REST_Response(['success' => false, 'message' => 'Subscriptions store unavailable'], 500);
+    }
+
+    switch ($event_type) {
+      case 'COLLECTION.RECURRING.CREATED':
+        return self::process_recurring_created($order, $payload, $recurring, $subscription_id);
+      case 'COLLECTION.RECURRING.PAID':
+        return self::process_recurring_paid($order, $payload, $recurring, $subscription_id);
+      case 'COLLECTION.RECURRING.FAILED':
+        return self::process_recurring_failed($subscription_id, $payload);
+      case 'COLLECTION.RECURRING.UPDATED':
+        return self::process_recurring_updated($subscription_id, $recurring);
+      case 'COLLECTION.RECURRING.DELETED':
+        return self::process_recurring_deleted($subscription_id);
+    }
+
+    return new WP_REST_Response(['success' => true, 'message' => 'Recurring event acknowledged'], 200);
+  }
+
+  /**
+   * Record a newly-created subscription and link it to the originating order.
+   * For trial subscriptions the originating order is marked paid immediately
+   * (the trial has started even though nothing is charged yet).
+   */
+  private static function process_recurring_created($order, $payload, $recurring, $subscription_id)
+  {
+    $interval   = isset($recurring['interval']) && is_array($recurring['interval']) ? $recurring['interval'] : [];
+    $period     = $interval['type'] ?? 'month';
+    $int_count  = max(1, (int) ($interval['count'] ?? 1));
+    $amount     = isset($recurring['amount']) ? floatval($recurring['amount']) : floatval($payload['amount'] ?? 0);
+    $trial_days = (int) ($recurring['trialPeriodDays'] ?? 0);
+    $currency   = $payload['currency'] ?? $order->get_currency();
+    $external_id = $payload['paymentLink']['externalId'] ?? '';
+
+    $next = $trial_days > 0
+      ? gmdate('Y-m-d H:i:s', strtotime("+{$trial_days} days"))
+      : self::compute_next_renewal($period, $int_count);
+
+    CentryOS_Subscriptions_Store::upsert_by_subscription_id($subscription_id, [
+      'external_id'          => $external_id,
+      'order_id'             => $order->get_id(),
+      'customer_id'          => $order->get_customer_id(),
+      'product_id'           => self::find_subscription_product_id($order),
+      'status'               => $trial_days > 0 ? CentryOS_Subscriptions_Store::STATUS_TRIALING : CentryOS_Subscriptions_Store::STATUS_ACTIVE,
+      'amount'               => $amount,
+      'currency'             => $currency,
+      'interval_type'        => $period,
+      'interval_count'       => $int_count,
+      'trial_days'           => $trial_days,
+      'current_period_start' => current_time('mysql', true),
+      'next_renewal_date'    => $next,
+    ]);
+
+    $order->update_meta_data('_centryos_subscription_id', $subscription_id);
+    $order->save();
+
+    // translators: 1: subscription id, 2: next renewal date
+    $order->add_order_note(sprintf(
+      __('CentryOS subscription created. Subscription ID: %1$s. Next renewal: %2$s', 'centryos-payment-gateway-for-woocommerce'),
+      $subscription_id,
+      $next
+    ));
+
+    // A trial means no charge now — treat the order as paid so the buyer's
+    // checkout/embedded flow completes; the first real charge fires at trial end.
+    if ($trial_days > 0 && !$order->is_paid()) {
+      $order->payment_complete();
+      $order->add_order_note(__('Subscription trial started (no charge due yet).', 'centryos-payment-gateway-for-woocommerce'));
+    }
+
+    do_action('centryos_webhook_subscription_created', $order->get_id(), $subscription_id, $payload);
+
+    return new WP_REST_Response(['success' => true, 'message' => 'Subscription recorded', 'subscriptionId' => $subscription_id], 200);
+  }
+
+  /**
+   * Handle a successful recurring charge. The first charge settles the
+   * originating order; subsequent charges create new renewal orders.
+   */
+  private static function process_recurring_paid($order, $payload, $recurring, $subscription_id)
+  {
+    $record = CentryOS_Subscriptions_Store::get_by_subscription_id($subscription_id);
+    if (!$record) {
+      // PAID arrived before CREATED — record it now, then re-read.
+      self::process_recurring_created($order, $payload, $recurring, $subscription_id);
+      $record = CentryOS_Subscriptions_Store::get_by_subscription_id($subscription_id);
+    }
+
+    $transaction_id   = $payload['transactionId'] ?? '';
+    $new_cycle        = ($record ? (int) $record->cycle_count : 0) + 1;
+    $is_trial         = $record && (int) $record->trial_days > 0;
+    $renewal_order_id = null;
+
+    if ($new_cycle === 1 && !$is_trial) {
+      // No trial: the first charge IS the originating order. Settle it (idempotent
+      // if a COLLECTION webhook already did) and never create a renewal order here.
+      if (!$order->is_paid()) {
+        if (!empty($transaction_id)) {
+          $order->update_meta_data('_centryos_transaction_id', $transaction_id);
+          $order->save();
+        }
+        $order->payment_complete($transaction_id);
+        $order->add_order_note(__('Initial subscription payment confirmed via CentryOS.', 'centryos-payment-gateway-for-woocommerce'));
+      }
+    } else {
+      // Trial's first real charge (the trial start was the originating order), or
+      // any subsequent renewal: create a fresh order.
+      $renewal_order_id = self::create_renewal_order($order, $record, $payload, $subscription_id);
+    }
+
+    if ($record) {
+      CentryOS_Subscriptions_Store::update($record->id, [
+        'status'               => CentryOS_Subscriptions_Store::STATUS_ACTIVE,
+        'cycle_count'          => $new_cycle,
+        'current_period_start' => current_time('mysql', true),
+        'next_renewal_date'    => self::compute_next_renewal($record->interval_type, (int) $record->interval_count),
+      ]);
+    }
+
+    do_action('centryos_webhook_subscription_renewed', $order->get_id(), $subscription_id, $renewal_order_id, $payload);
+
+    return new WP_REST_Response([
+      'success'        => true,
+      'message'        => 'Recurring charge processed',
+      'subscriptionId' => $subscription_id,
+      'renewalOrderId' => $renewal_order_id,
+    ], 200);
+  }
+
+  /**
+   * Create a WooCommerce renewal order containing only the subscription product
+   * at the recurring rate (one-time items from the original cart do not recur).
+   *
+   * @return int|null Renewal order id or null on failure.
+   */
+  private static function create_renewal_order($parent_order, $record, $payload, $subscription_id)
+  {
+    $amount   = $record ? floatval($record->amount) : floatval($payload['amount'] ?? 0);
+    $currency = $record && !empty($record->currency) ? $record->currency : ($payload['currency'] ?? $parent_order->get_currency());
+    $product  = ($record && $record->product_id) ? wc_get_product($record->product_id) : null;
+
+    $renewal = wc_create_order(['customer_id' => $parent_order->get_customer_id()]);
+    if (is_wp_error($renewal)) {
+      self::log('error', 'failed to create renewal order', ['subscription_id' => $subscription_id]);
+      return null;
+    }
+
+    if ($product) {
+      $renewal->add_product($product, 1, [
+        'subtotal' => $amount,
+        'total'    => $amount,
+      ]);
+    } else {
+      $fee = new WC_Order_Item_Fee();
+      $fee->set_name(__('Subscription renewal', 'centryos-payment-gateway-for-woocommerce'));
+      $fee->set_total($amount);
+      $renewal->add_item($fee);
+    }
+
+    $renewal->set_address($parent_order->get_address('billing'), 'billing');
+    $renewal->set_address($parent_order->get_address('shipping'), 'shipping');
+    $renewal->set_currency($currency);
+    $renewal->set_payment_method('centryos_gateway');
+    $renewal->set_payment_method_title('CentryOS Payment Gateway');
+
+    $renewal->update_meta_data('_centryos_subscription_id', $subscription_id);
+    $renewal->update_meta_data('_centryos_renewal_parent_order', $parent_order->get_id());
+
+    $transaction_id = $payload['transactionId'] ?? '';
+    if (!empty($transaction_id)) {
+      $renewal->update_meta_data('_centryos_transaction_id', $transaction_id);
+    }
+
+    $renewal->calculate_totals();
+    // translators: %s: subscription id
+    $renewal->add_order_note(sprintf(
+      __('Subscription renewal for %s.', 'centryos-payment-gateway-for-woocommerce'),
+      $subscription_id
+    ));
+    $renewal->payment_complete($transaction_id);
+    $renewal->save();
+
+    return $renewal->get_id();
+  }
+
+  /**
+   * Mark a subscription past_due after a failed charge.
+   */
+  private static function process_recurring_failed($subscription_id, $payload)
+  {
+    $record = CentryOS_Subscriptions_Store::get_by_subscription_id($subscription_id);
+    if ($record) {
+      CentryOS_Subscriptions_Store::update($record->id, ['status' => CentryOS_Subscriptions_Store::STATUS_PAST_DUE]);
+      do_action('centryos_webhook_subscription_payment_failed', (int) $record->order_id, $subscription_id, $payload);
+    }
+    return new WP_REST_Response(['success' => true, 'message' => 'Subscription marked past_due'], 200);
+  }
+
+  /**
+   * Acknowledge a subscription update. Lightweight: refresh next renewal when
+   * the event carries interval data. Merchant-initiated cancellation is tracked
+   * locally at request time and finalised by the DELETED event.
+   */
+  private static function process_recurring_updated($subscription_id, $recurring)
+  {
+    $record = CentryOS_Subscriptions_Store::get_by_subscription_id($subscription_id);
+    if ($record && !empty($recurring['interval']['type'])) {
+      CentryOS_Subscriptions_Store::update($record->id, [
+        'next_renewal_date' => self::compute_next_renewal(
+          $recurring['interval']['type'],
+          max(1, (int) ($recurring['interval']['count'] ?? 1))
+        ),
+      ]);
+    }
+    return new WP_REST_Response(['success' => true, 'message' => 'Subscription update acknowledged'], 200);
+  }
+
+  /**
+   * Finalise cancellation (terminal) when the provider deletes the subscription.
+   */
+  private static function process_recurring_deleted($subscription_id)
+  {
+    CentryOS_Subscriptions_Store::mark_canceled($subscription_id);
+    $record = CentryOS_Subscriptions_Store::get_by_subscription_id($subscription_id);
+    do_action('centryos_webhook_subscription_cancelled', $record ? (int) $record->order_id : 0, $subscription_id);
+    return new WP_REST_Response(['success' => true, 'message' => 'Subscription cancelled'], 200);
+  }
+
+  /**
+   * The product id of the first subscription line item in an order.
+   */
+  private static function find_subscription_product_id($order)
+  {
+    if (!class_exists('CentryOS_Product_Subscription')) {
+      return 0;
+    }
+    foreach ($order->get_items() as $item) {
+      $product = $item->get_product();
+      if ($product && CentryOS_Product_Subscription::is_subscription_product($product)) {
+        return $product->get_id();
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Next renewal timestamp = now + (interval_count × period), as UTC 'Y-m-d H:i:s'.
+   */
+  private static function compute_next_renewal($period, $interval, $base_ts = null)
+  {
+    $base_ts = $base_ts ?: time();
+    $map     = ['day' => 'days', 'week' => 'weeks', 'month' => 'months', 'year' => 'years'];
+    $unit    = $map[$period] ?? 'months';
+    $count   = max(1, (int) $interval);
+    return gmdate('Y-m-d H:i:s', strtotime("+{$count} {$unit}", $base_ts));
   }
 
   /**
