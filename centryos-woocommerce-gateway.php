@@ -43,6 +43,7 @@ function centryos_gateway_init() {
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-product-subscription.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-subscriptions-store.php';
     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-subscriptions-admin.php';
+    require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-refund-status.php';
 
     // Register payment gateway
     add_filter('woocommerce_payment_gateways', 'centryos_gateway_register');
@@ -57,6 +58,8 @@ function centryos_gateway_init() {
     // Ensure the subscriptions table exists / is up to date (covers upgrades
     // where the activation hook did not run).
     centryos_gateway_maybe_install_db();
+    // Register the custom "Refund Pending" order status and its admin guards
+    CentryOS_Refund_Status::init();
 }
 add_action('plugins_loaded', 'centryos_gateway_init');
 

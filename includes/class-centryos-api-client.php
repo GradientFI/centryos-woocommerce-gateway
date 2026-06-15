@@ -178,23 +178,38 @@ class CentryOS_API_Client {
      * Submit a refund request for a transaction
      *
      * @param string $transaction_id CentryOS transaction ID
-     * @param float  $amount         Refund amount
-     * @param string $reason         Optional refund reason
+     * @param float  $amount         Refund amount (in major units, e.g. 40.00)
+     * @param string $reason         Optional human-entered reason; sent as `note`
+     * @param bool   $is_partial     True when refunding less than the full charge
      * @return array|WP_Error        Parsed response data or error
      */
-    public function create_refund( $transaction_id, $amount, $reason = '' ) {
+    public function create_refund( $transaction_id, $amount, $reason = '', $is_partial = false ) {
         $token = $this->generate_jwt();
 
         if ( is_wp_error( $token ) ) {
             return $token;
         }
 
-        $payload = [ 'amount' => floatval( $amount ) ];
+        // CentryOS requires `reason` to be one of a fixed enum and only honours the
+        // supplied `amount` when `isPartial` is true (otherwise it refunds the full
+        // original transaction amount). Carry the WooCommerce free-text reason as `note`.
+        $payload = [
+            'amount'    => floatval( $amount ),
+            'reason'    => 'requested_by_customer',
+            'isPartial' => (bool) $is_partial,
+        ];
         if ( ! empty( $reason ) ) {
-            $payload['reason'] = $reason;
+            $payload['note'] = $reason;
         }
 
-        $response = wp_remote_post( $this->get_refund_endpoint( $transaction_id ), [
+        $endpoint = $this->get_refund_endpoint( $transaction_id );
+        $this->log_event( 'info', 'create_refund request', [
+            'endpoint'       => $endpoint,
+            'transaction_id' => $transaction_id,
+            'payload'        => $payload,
+        ] );
+
+        $response = wp_remote_post( $endpoint, [
             'headers' => [
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type'  => 'application/json',
@@ -213,6 +228,11 @@ class CentryOS_API_Client {
         $http_code = wp_remote_retrieve_response_code( $response );
         $body      = wp_remote_retrieve_body( $response );
         $data      = json_decode( $body, true );
+
+        $this->log_event( 'info', 'create_refund response', [
+            'http_code' => $http_code,
+            'body'      => $body,
+        ] );
 
         if ( $http_code < 200 || $http_code >= 300 ) {
             $message = isset( $data['message'] ) ? $data['message'] : __( 'Refund request failed.', 'centryos-payment-gateway-for-woocommerce' );
