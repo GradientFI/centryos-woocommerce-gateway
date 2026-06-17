@@ -4,7 +4,7 @@ Tags: woocommerce, payment, gateway, centryos
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,6 +27,10 @@ CentryOS Payment Gateway for WooCommerce allows you to accept payments through C
 
 Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkout experience.
 
+= Can I sell subscription products? =
+
+Yes. As of 1.5.0 you can tag a simple product as a subscription under its "CentryOS Subscription" tab — set the recurring rate, the billing interval, and an optional free trial. The full cart total is charged once at checkout and only the subscription rate recurs each cycle. View and cancel active subscriptions under WooCommerce > CentryOS Subscriptions. Requires the CentryOS recurring payments API to be enabled for your account.
+
 = What are the minimum requirements? =
 
 * WordPress 5.8 or higher
@@ -34,6 +38,15 @@ Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkou
 * WooCommerce 6.0 or higher
 
 == Changelog ==
+
+= 1.5.0 =
+* Added: Subscriptions — tag a simple product as recurring in the new "CentryOS Subscription" product tab (recurring rate, billing interval, and an optional free trial with day/week/month/year units)
+* Added: recurring checkout — the full cart total is charged once, then only the subscription rate recurs each cycle; a subscription and one-time products can share the same cart
+* Added: subscription tracking with next renewal date, plus a new WooCommerce > CentryOS Subscriptions screen to view subscriptions and cancel them (at the end of the current paid period)
+* Added: automatic renewal orders — each renewal creates a linked WooCommerce order at the recurring rate
+* Added: "Add subscription to cart" button label on subscription products (shop and product pages)
+* Added: handling for COLLECTION.RECURRING.* webhooks and centryos_webhook_subscription_* action hooks for integrations
+* Note: requires the CentryOS recurring payments API (cancel endpoint + recurring amount/trial support) enabled for your account
 
 = 1.4.0 =
 * Added: Checkout Mode setting — choose between the existing redirect flow and a new embedded mode that renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page. On success the buyer is redirected to the standard order-received page. Success is detected via a `centryos_payment_complete` postMessage event with an AJAX status poll as a fallback. Requires CentryOS framing to be enabled for your domain.
@@ -57,6 +70,9 @@ Yes, this plugin is fully compatible with WooCommerce Blocks and the new checkou
 * Initial release
 
 == Upgrade Notice ==
+
+= 1.5.0 =
+Adds CentryOS subscriptions: sell products that bill on a recurring schedule, track renewals, and cancel from WooCommerce. Requires the CentryOS recurring payments API (cancel endpoint plus recurring amount/trial support) to be enabled for your account. Existing one-time payment behavior is unchanged.
 
 = 1.4.0 =
 Adds an opt-in embedded checkout mode that keeps buyers on your site inside an iframe. Existing installs default to the redirect flow — no action required unless you want to enable embedded.

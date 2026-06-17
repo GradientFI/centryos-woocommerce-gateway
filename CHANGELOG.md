@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (Future changes will be listed here)
 
+## [1.5.0] - 2026-06-15
+
+### Added
+- **Subscriptions.** Tag any simple product as a recurring CentryOS subscription from a new **CentryOS Subscription** product-data tab. Configure the recurring **rate**, the billing cycle (**Subscriptions Per Interval** — a value plus a Days/Weeks/Months/Years unit), and an optional **Free trial interval** (value plus unit).
+- **Recurring checkout.** Orders that contain a subscription product are sent to CentryOS as a recurring payment (`checkoutType: recurring`). The full cart total is charged once up front; only the subscription rate recurs each cycle. One-time products can share the cart with a subscription and are folded into that initial charge.
+- **Subscription tracking.** New `{$wpdb->prefix}centryos_subscriptions` table records each subscription's status, billing interval, cycle count and **next renewal date**; the originating order stores `_centryos_subscription_id`.
+- **Renewal orders.** Each successful renewal creates a new linked WooCommerce order containing only the subscription line at the recurring rate, then advances the next renewal date.
+- **Subscription lifecycle webhooks.** Handles `COLLECTION.RECURRING.CREATED`, `.PAID`, `.FAILED`, `.UPDATED` and `.DELETED`, with new action hooks `centryos_webhook_subscription_created`, `centryos_webhook_subscription_renewed`, `centryos_webhook_subscription_payment_failed` and `centryos_webhook_subscription_cancelled` for integrations.
+- **Merchant cancellation.** New **WooCommerce → CentryOS Subscriptions** admin screen lists customer subscriptions and cancels them at the end of the current paid period.
+- **"Add subscription to cart"** button label on subscription products, on both shop/archive and single-product pages.
+- `CentryOS_API_Client::cancel_subscription()` and `get_recurring_payment()` methods plus the recurring endpoint paths.
+
+### Changed
+- Cart guardrails: a cart may contain at most one subscription product (CentryOS bills a single subscription per checkout). Mixing a subscription with regular one-time products is allowed — the one-time items are charged once with the initial payment.
+
+> **Requires** the CentryOS recurring payments API (liquidity-service) with the recurring-payment **cancel** endpoint and `recurringCharge.amount` / `trialPeriodDays` support. One-time payment behavior is unchanged.
+
 ## [1.4.0] - 2026-05-25
 
 ### Added
