@@ -112,12 +112,14 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
           ],
           'payment_options' => [
               'title' => 'Payment Options',
-              'type'  => 'multiselect',
+              'type'  => 'multi_checkbox',
+              'description' => 'Select which payment methods customers can use at the CentryOS checkout.',
               'options' => [
-                  'apple_pay'  => 'Apple Pay',
-                  'card'       => 'Card',
-                  'cashapp'    => 'Cash App',
-                  'google_pay' => 'Google Pay'
+                  'apple_pay'       => 'Apple Pay',
+                  'card'            => 'Card',
+                  'cashapp'         => 'Cash App',
+                  'google_pay'      => 'Google Pay',
+                  'us_bank_account' => 'Pay by Bank'
               ],
               'default' => ['card', 'google_pay', 'apple_pay']
           ],
@@ -152,6 +154,82 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               'description' => 'Pale color for payment elements'
           ],
       ];
+    }
+
+    /**
+     * Render a group of checkboxes for an array-valued setting.
+     *
+     * Custom WC_Settings_API field type `multi_checkbox`: WooCommerce calls this
+     * automatically for any field whose `type` is `multi_checkbox`. Selected
+     * values are stored as an array of option keys (same shape the previous
+     * multiselect produced), so consumers need no changes.
+     *
+     * @param string $key  Field key.
+     * @param array  $data Field definition.
+     * @return string
+     */
+    public function generate_multi_checkbox_html($key, $data) {
+        $field_key = $this->get_field_key($key);
+        $defaults  = [
+            'title'             => '',
+            'description'       => '',
+            'desc_tip'          => false,
+            'options'           => [],
+            'default'           => [],
+            'disabled'          => false,
+            'custom_attributes' => [],
+        ];
+        $data = wp_parse_args($data, $defaults);
+
+        $selected = array_map('strval', (array) $this->get_option($key, $data['default']));
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php echo wp_kses_post($data['title']); ?> <?php echo $this->get_tooltip_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></label>
+            </th>
+            <td class="forminp">
+                <fieldset>
+                    <legend class="screen-reader-text"><span><?php echo wp_kses_post($data['title']); ?></span></legend>
+                    <?php foreach ((array) $data['options'] as $option_key => $option_label) : ?>
+                        <label style="display:block;margin-bottom:6px;">
+                            <input
+                                type="checkbox"
+                                name="<?php echo esc_attr($field_key); ?>[]"
+                                value="<?php echo esc_attr($option_key); ?>"
+                                <?php checked(in_array((string) $option_key, $selected, true), true); ?>
+                                <?php disabled($data['disabled'], true); ?>
+                                <?php echo $this->get_custom_attribute_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> />
+                            <?php echo wp_kses_post($option_label); ?>
+                        </label>
+                    <?php endforeach; ?>
+                    <?php echo $this->get_description_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </fieldset>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Sanitize a submitted `multi_checkbox` value to an array of valid option keys.
+     * Unchecked groups submit nothing (WooCommerce passes null), which becomes an
+     * empty array.
+     *
+     * @param string     $key   Field key.
+     * @param array|null $value Posted value.
+     * @return array
+     */
+    public function validate_multi_checkbox_field($key, $value) {
+        $options = isset($this->form_fields[$key]['options'])
+            ? array_keys($this->form_fields[$key]['options'])
+            : [];
+
+        $raw   = is_array($value) ? $value : [];
+        $clean = array_map('wc_clean', $raw);
+
+        return array_values(array_intersect($clean, $options));
     }
 
     

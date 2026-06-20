@@ -4,7 +4,7 @@ Tags: woocommerce, payment, gateway, centryos
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -39,6 +39,9 @@ Yes. As of 1.5.0 you can tag a simple product as a subscription under its "Centr
 
 == Changelog ==
 
+= 1.5.1 =
+* Added: Pay by Bank — a new option in the gateway's Payment Options that lets customers pay directly from their bank account (open banking) at CentryOS checkout. Opt-in; enable it under WooCommerce > Settings > Payments > CentryOS. Availability depends on your CentryOS/Stripe account (USD / US bank accounts).
+
 = 1.5.0 =
 * Added: Subscriptions — tag a simple product as recurring in the new "CentryOS Subscription" product tab (recurring rate, billing interval, and an optional free trial with day/week/month/year units)
 * Added: recurring checkout — the full cart total is charged once, then only the subscription rate recurs each cycle; a subscription and one-time products can share the same cart
@@ -70,6 +73,9 @@ Yes. As of 1.5.0 you can tag a simple product as a subscription under its "Centr
 * Initial release
 
 == Upgrade Notice ==
+
+= 1.5.1 =
+Adds an optional Pay by Bank checkout method. No action required for existing stores; enable it under the gateway's Payment Options if you want to offer bank (open banking) payments.
 
 = 1.5.0 =
 Adds CentryOS subscriptions: sell products that bill on a recurring schedule, track renewals, and cancel from WooCommerce. Requires the CentryOS recurring payments API (cancel endpoint plus recurring amount/trial support) to be enabled for your account. Existing one-time payment behavior is unchanged.

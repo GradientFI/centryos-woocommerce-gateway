@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (Future changes will be listed here)
 
+## [1.5.1] - 2026-06-15
+
+### Added
+- **Pay by Bank** payment option. A new "Pay by Bank" choice in the gateway's **Payment Options** setting forwards `us_bank_account` in `acceptedPaymentOptions`, surfacing CentryOS's bank (open banking) method at checkout alongside card and wallets. Opt-in and disabled by default; availability depends on your CentryOS/Stripe account (USD / US bank accounts). Confirmed accepted by the CentryOS recurring/checkout API on staging.
+
 ## [1.5.0] - 2026-06-15
 
 ### Added
