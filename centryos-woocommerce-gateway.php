@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CentryOS Payment Gateway for WooCommerce
  * Description: Accept payments via CentryOS hosted payment links. Fully compatible with WooCommerce Blocks.
- * Version: 1.5.0
+ * Version: 1.5.1
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: CentryOS
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('CENTRYOS_GATEWAY_VERSION', '1.5.0');
+define('CENTRYOS_GATEWAY_VERSION', '1.5.1');
 define('CENTRYOS_GATEWAY_DB_VERSION', '1');
 define('CENTRYOS_GATEWAY_PLUGIN_FILE', __FILE__);
 define('CENTRYOS_GATEWAY_PLUGIN_DIR', plugin_dir_path(__FILE__));
