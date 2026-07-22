@@ -20,7 +20,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->method_title = __('CentryOS Payment Gateway', 'centryos-payment-gateway-for-woocommerce');
         $this->method_description = __('Accept payments via CentryOS hosted payment links.', 'centryos-payment-gateway-for-woocommerce');
         $this->has_fields = false;
-        $this->supports = ['products'];
+        $this->supports = [ 'products', 'refunds' ];
         
         $this->init_form_fields();
         $this->init_settings();
@@ -39,7 +39,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->color_subdued = $this->get_option('color_subdued', '#A855F7');
         $this->color_disabled = $this->get_option('color_disabled', '#E9D5FF');
         $this->color_pale = $this->get_option('color_pale', '#F3E8FF');
-        
+
         // Meta Pixel settings
         $this->enable_meta_pixel = $this->get_option('enable_meta_pixel', 'no');
         $this->meta_pixel_id = $this->get_option('meta_pixel_id', '');
@@ -47,7 +47,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->meta_pixel_track_initiate_checkout = $this->get_option('meta_pixel_track_initiate_checkout', 'yes');
         $this->meta_pixel_track_add_payment_info = $this->get_option('meta_pixel_track_add_payment_info', 'yes');
         $this->meta_pixel_track_purchase = $this->get_option('meta_pixel_track_purchase', 'yes');
-        
+
         // Initialize Meta Pixel if enabled
         if ($this->enable_meta_pixel === 'yes' && !empty($this->meta_pixel_id)) {
             require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-pixel-tracker.php';
@@ -61,14 +61,14 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
                 ]
             );
         }
-        
+
+        $this->checkout_mode = $this->get_option('checkout_mode', 'redirect');
+
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
         add_action('woocommerce_thankyou_' . $this->id, [$this, 'thankyou_page']);
-        add_action('wp_enqueue_scripts', [$this, 'enqueue_modal_scripts']);
-        add_action('wp_ajax_centryos_get_payment_url', [$this, 'ajax_get_payment_url']);
-        add_action('wp_ajax_nopriv_centryos_get_payment_url', [$this, 'ajax_get_payment_url']);
-        add_action('wp_ajax_centryos_check_payment_status', [$this, 'ajax_check_payment_status']);
-        add_action('wp_ajax_nopriv_centryos_check_payment_status', [$this, 'ajax_check_payment_status']);
+        add_action('woocommerce_receipt_' . $this->id, [$this, 'receipt_page']);
+        add_action('wp_ajax_centryos_check_order_status', [$this, 'ajax_check_order_status']);
+        add_action('wp_ajax_nopriv_centryos_check_order_status', [$this, 'ajax_check_order_status']);
     }
     
     /**
@@ -80,7 +80,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         }
         return $this->get_option($setting_key, '');
     }
-    
+
     /**
      * Validate Meta Pixel ID
      */
@@ -99,7 +99,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         
         return $value;
     }
-    
+
     /**
      * Initialize form fields
      */
@@ -124,29 +124,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
           'client_id' => [
               'title' => 'Client ID',
               'type'  => 'text',
-              'default' => '',
-              'description' => __('Enter your CentryOS Client ID. For security, you can also set this in wp-config.php as CENTRYOS_CLIENT_ID constant.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'secret' => [
-              'title' => 'API Secret',
-              'type'  => 'password',
-              'default' => '',
-              'description' => __('Enter your CentryOS API Secret. For security, you can also set this in wp-config.php as CENTRYOS_API_SECRET constant.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'webhook_url' => [
-              'title' => 'Webhook URL',
-              'type'  => 'text',
-              'default' => 'https://f7c6d0f0af0d.ngrok-free.app/wordpress/wp-json/v1/wh/centryos/payment-complete',
-              'description' => __('Copy this webhook URL and configure it in your CentryOS dashboard.', 'centryos-payment-gateway-for-woocommerce'),
-              'custom_attributes' => [
-                  'readonly' => 'readonly'
-              ]
-          ],
-          'webhook_secret' => [
-              'title' => 'Webhook Secret',
-              'type'  => 'password',
-              'default' => '',
-              'description' => __('Enter your CentryOS Webhook Secret for signature verification. For security, you can also set this in wp-config.php as CENTRYOS_WEBHOOK_SECRET constant.', 'centryos-payment-gateway-for-woocommerce')
+              'default' => ''
           ],
           'api_url' => [
               'title' => 'API Environment',
@@ -158,6 +136,16 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               'default' => 'staging',
               'description' => 'Select the API environment to use'
           ],
+          'checkout_mode' => [
+              'title' => 'Checkout Mode',
+              'type'  => 'select',
+              'options' => [
+                  'redirect' => 'Redirect to CentryOS (default)',
+                  'embedded' => 'Embedded on order page',
+              ],
+              'default' => 'redirect',
+              'description' => 'Embedded keeps the buyer on your site inside an iframe. Requires CentryOS framing to be enabled for your domain.',
+          ],
           'customer_pays' => [
               'title' => 'Customer Pays',
               'type'  => 'checkbox',
@@ -166,12 +154,14 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
           ],
           'payment_options' => [
               'title' => 'Payment Options',
-              'type'  => 'multiselect',
+              'type'  => 'multi_checkbox',
+              'description' => 'Select which payment methods customers can use at the CentryOS checkout.',
               'options' => [
-                  'apple_pay'  => 'Apple Pay',
-                  'card'       => 'Card',
-                  'cashapp'    => 'Cash App',
-                  'google_pay' => 'Google Pay'
+                  'apple_pay'       => 'Apple Pay',
+                  'card'            => 'Card',
+                  'cashapp'         => 'Cash App',
+                  'google_pay'      => 'Google Pay',
+                  'us_bank_account' => 'Pay by Bank'
               ],
               'default' => ['card', 'google_pay', 'apple_pay']
           ],
@@ -205,7 +195,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               'default' => '#E4EFFA',
               'description' => 'Pale color for payment elements'
           ],
-          
+
           // Meta Pixel Settings Section
           'meta_pixel_section' => [
               'title' => __('Meta Pixel Settings', 'centryos-payment-gateway-for-woocommerce'),
@@ -259,6 +249,82 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
       ];
     }
 
+    /**
+     * Render a group of checkboxes for an array-valued setting.
+     *
+     * Custom WC_Settings_API field type `multi_checkbox`: WooCommerce calls this
+     * automatically for any field whose `type` is `multi_checkbox`. Selected
+     * values are stored as an array of option keys (same shape the previous
+     * multiselect produced), so consumers need no changes.
+     *
+     * @param string $key  Field key.
+     * @param array  $data Field definition.
+     * @return string
+     */
+    public function generate_multi_checkbox_html($key, $data) {
+        $field_key = $this->get_field_key($key);
+        $defaults  = [
+            'title'             => '',
+            'description'       => '',
+            'desc_tip'          => false,
+            'options'           => [],
+            'default'           => [],
+            'disabled'          => false,
+            'custom_attributes' => [],
+        ];
+        $data = wp_parse_args($data, $defaults);
+
+        $selected = array_map('strval', (array) $this->get_option($key, $data['default']));
+
+        ob_start();
+        ?>
+        <tr valign="top">
+            <th scope="row" class="titledesc">
+                <label><?php echo wp_kses_post($data['title']); ?> <?php echo $this->get_tooltip_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></label>
+            </th>
+            <td class="forminp">
+                <fieldset>
+                    <legend class="screen-reader-text"><span><?php echo wp_kses_post($data['title']); ?></span></legend>
+                    <?php foreach ((array) $data['options'] as $option_key => $option_label) : ?>
+                        <label style="display:block;margin-bottom:6px;">
+                            <input
+                                type="checkbox"
+                                name="<?php echo esc_attr($field_key); ?>[]"
+                                value="<?php echo esc_attr($option_key); ?>"
+                                <?php checked(in_array((string) $option_key, $selected, true), true); ?>
+                                <?php disabled($data['disabled'], true); ?>
+                                <?php echo $this->get_custom_attribute_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?> />
+                            <?php echo wp_kses_post($option_label); ?>
+                        </label>
+                    <?php endforeach; ?>
+                    <?php echo $this->get_description_html($data); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </fieldset>
+            </td>
+        </tr>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Sanitize a submitted `multi_checkbox` value to an array of valid option keys.
+     * Unchecked groups submit nothing (WooCommerce passes null), which becomes an
+     * empty array.
+     *
+     * @param string     $key   Field key.
+     * @param array|null $value Posted value.
+     * @return array
+     */
+    public function validate_multi_checkbox_field($key, $value) {
+        $options = isset($this->form_fields[$key]['options'])
+            ? array_keys($this->form_fields[$key]['options'])
+            : [];
+
+        $raw   = is_array($value) ? $value : [];
+        $clean = array_map('wc_clean', $raw);
+
+        return array_values(array_intersect($clean, $options));
+    }
+
     
     /**
      * Process payment
@@ -266,150 +332,43 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     public function process_payment($order_id) {
         $order = wc_get_order($order_id);
         
-        // Store order ID in session for modal
-        if (WC()->session) {
-            WC()->session->set('centryos_order_id', $order_id);
-        }
-        
-        $order->update_status('on-hold', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
-        wc_reduce_stock_levels($order_id);
-        
-        // Return success without redirect - modal will handle payment URL generation
-        return [
-            'result' => 'success',
-            'redirect' => '' // Empty redirect triggers modal
-        ];
-    }
-    
-    /**
-     * AJAX handler to get payment URL for modal
-     */
-    public function ajax_get_payment_url() {
-        check_ajax_referer('centryos-payment-nonce', 'nonce');
-        
-        $order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
-        $order = wc_get_order($order_id);
-        
-        if (!$order) {
-            wp_send_json_error(['message' => __('Order not found.', 'centryos-payment-gateway-for-woocommerce')]);
-        }
-        
-        // Verify order belongs to current user or is a guest order (for security)
-        $current_user_id = get_current_user_id();
-        $order_user_id = $order->get_user_id();
-        
-        // Allow if: user is admin, order belongs to current user, or both are guest (0)
-        if (!current_user_can('manage_woocommerce')) {
-            if ($order_user_id !== $current_user_id && ($order_user_id !== 0 || $current_user_id !== 0)) {
-                // Additional check: verify order was created recently (within last 10 minutes) for guest orders
-                $order_date = $order->get_date_created();
-                if ($order_date) {
-                    $order_timestamp = $order_date->getTimestamp();
-                    $current_timestamp = current_time('timestamp');
-                    if (($current_timestamp - $order_timestamp) > 600) { // 10 minutes
-                        wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
-                    }
-                } else {
-                    wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
-                }
-            }
-        }
-        
         $api_client = new CentryOS_API_Client($this->client_id, $this->secret, $this->api_url);
         $payload = $this->build_payload($order);
         $payment_url = $api_client->create_payment_link($payload);
         
         if (is_wp_error($payment_url)) {
-            wp_send_json_error(['message' => $payment_url->get_error_message()]);
+            wc_add_notice(
+                __('Payment error: ', 'centryos-payment-gateway-for-woocommerce') . $payment_url->get_error_message(),
+                'error'
+            );
+            return ['result' => 'failure'];
         }
-        
+         
         // Add customer information as query strings
         $payment_url = $this->add_customer_query_strings($payment_url, $order);
-        
-        wp_send_json_success([
-            'payment_url' => $payment_url,
-            'order_id' => $order_id,
-            'return_url' => $this->get_return_url($order)
-        ]);
-    }
-    
-    /**
-     * AJAX handler to check payment status
-     */
-    public function ajax_check_payment_status() {
-        check_ajax_referer('centryos-payment-nonce', 'nonce');
-        
-        $order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
-        $order = wc_get_order($order_id);
-        
-        if (!$order) {
-            wp_send_json_error(['message' => __('Order not found.', 'centryos-payment-gateway-for-woocommerce')]);
+
+        wc_reduce_stock_levels($order_id);
+
+        if ($this->checkout_mode === 'embedded') {
+            // Force 'pending' so WC_Order::needs_payment() stays true and the
+            // woocommerce_receipt_{$id} hook fires on the order-pay page. The
+            // webhook handler progresses the order to processing/completed.
+            $order->update_status('pending', __('Awaiting payment via embedded CentryOS checkout', 'centryos-payment-gateway-for-woocommerce'));
+            $order->update_meta_data('_centryos_payment_url', $payment_url);
+            $order->save();
+
+            return [
+                'result'   => 'success',
+                'redirect' => $order->get_checkout_payment_url(true),
+            ];
         }
-        
-        // Verify order belongs to current user or is a guest order (for security)
-        $current_user_id = get_current_user_id();
-        $order_user_id = $order->get_user_id();
-        
-        // Allow if: user is admin, order belongs to current user, or both are guest (0)
-        if (!current_user_can('manage_woocommerce')) {
-            if ($order_user_id !== $current_user_id && ($order_user_id !== 0 || $current_user_id !== 0)) {
-                // Additional check: verify order was created recently (within last 10 minutes) for guest orders
-                $order_date = $order->get_date_created();
-                if ($order_date) {
-                    $order_timestamp = $order_date->getTimestamp();
-                    $current_timestamp = current_time('timestamp');
-                    if (($current_timestamp - $order_timestamp) > 600) { // 10 minutes
-                        wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
-                    }
-                } else {
-                    wp_send_json_error(['message' => __('Unauthorized access.', 'centryos-payment-gateway-for-woocommerce')]);
-                }
-            }
-        }
-        
-        // Check if order is paid
-        $is_paid = $order->is_paid();
-        
-        wp_send_json_success([
-            'paid' => $is_paid,
-            'status' => $order->get_status(),
-            'redirect_url' => $is_paid ? $this->get_return_url($order) : ''
-        ]);
-    }
-    
-    /**
-     * Enqueue modal scripts and styles
-     */
-    public function enqueue_modal_scripts() {
-        if (is_checkout() || is_wc_endpoint_url('order-received')) {
-            wp_enqueue_script(
-                'centryos-modal',
-                CENTRYOS_GATEWAY_PLUGIN_URL . 'assets/js/centryos-modal.js',
-                ['jquery'],
-                CENTRYOS_GATEWAY_VERSION,
-                true
-            );
-            wp_enqueue_style(
-                'centryos-modal',
-                CENTRYOS_GATEWAY_PLUGIN_URL . 'assets/css/centryos-modal.css',
-                [],
-                CENTRYOS_GATEWAY_VERSION
-            );
-            
-            $order_id = WC()->session ? WC()->session->get('centryos_order_id') : 0;
-            
-            wp_localize_script('centryos-modal', 'centryosData', [
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('centryos-payment-nonce'),
-                'checkoutUrl' => wc_get_checkout_url(),
-                'orderId' => $order_id
-            ]);
-            
-            // Debug: Log that scripts are being enqueued
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CentryOS Gateway] Modal scripts enqueued on checkout page. Order ID from session: ' . $order_id);
-            }
-        }
+
+        $order->update_status('pending', __('Awaiting payment via CentryOS', 'centryos-payment-gateway-for-woocommerce'));
+
+        return [
+            'result' => 'success',
+            'redirect' => $payment_url
+        ];
     }
     
     /**
@@ -417,8 +376,10 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
      * Do not change the payload structure
      */
     private function build_payload($order) {
-        return [
-            'currency' => get_woocommerce_currency(),
+        $currency = get_woocommerce_currency();
+
+        $payload = [
+            'currency' => $currency,
             'expiredAt' => gmdate('Y-m-d\TH:i:s\Z', strtotime('+1 day')),
             // translators: %s: Order number
             'name' => sprintf(__('Order #%s', 'centryos-payment-gateway-for-woocommerce'), $order->get_order_number()),
@@ -430,6 +391,8 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             'customerPays' => ($this->customer_pays === 'yes'),
             'acceptedPaymentOptions' => $this->payment_options,
             'dataCollections' => ['Email', 'First name', 'Last name', 'Phone number'],
+            'itemDeliveryAddress' => $this->build_item_delivery_address($order),
+            'cartItems' => $this->build_cart_items($order, $currency),
             'brandingConfig' => [
                 'hideCentryTag' => ($this->hide_centry_tag === 'yes'),
                 'colors' => [
@@ -439,8 +402,113 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
                     'pale' => $this->color_pale
                 ]
             ]
-           
+
         ];
+
+        // When the order contains a subscription product, switch to a recurring
+        // checkout. The top-level `amount` stays the full cart total (charged once
+        // up front); `recurringCharge.amount` carries only the per-cycle rate so
+        // renewals charge that rate and the one-time remainder is folded into the
+        // first invoice by the liquidity-service.
+        $subscription = $this->get_subscription_config_from_order($order);
+        if ($subscription) {
+            $payload['checkoutType'] = 'recurring';
+            $payload['recurringCharge'] = [
+                'type'            => 'subscription',
+                'amount'          => $subscription['rate'],
+                'startDate'       => gmdate('Y-m-d\TH:i:s\Z'),
+                'interval'        => [
+                    'type'  => $subscription['period'],
+                    'count' => $subscription['interval'],
+                ],
+                'trialPeriodDays' => $subscription['trial_days'],
+            ];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Resolve the subscription configuration for an order, if it contains a
+     * subscription product. Cart guardrails ensure at most one subscription
+     * product per order, so the first match is authoritative.
+     *
+     * @param WC_Order $order
+     * @return array|null { rate:float, period:string, interval:int, trial_days:int, product_id:int }
+     */
+    private function get_subscription_config_from_order($order) {
+        if (!class_exists('CentryOS_Product_Subscription')) {
+            return null;
+        }
+
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            $config  = $product ? CentryOS_Product_Subscription::get_config($product) : null;
+            if ($config) {
+                $qty = max(1, (int) $item->get_quantity());
+                return [
+                    'rate'       => round($config['price'] * $qty, 2),
+                    'period'     => $config['period'],
+                    'interval'   => $config['interval'],
+                    'trial_days' => $config['trial_days'],
+                    'product_id' => $product->get_id(),
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a comma-separated delivery address from the order's shipping address,
+     * falling back to the billing address when shipping is empty.
+     */
+    private function build_item_delivery_address($order) {
+        $type = $order->get_shipping_address_1() || $order->get_shipping_city() ? 'shipping' : 'billing';
+
+        $parts = array_filter([
+            $type === 'shipping' ? $order->get_shipping_address_1() : $order->get_billing_address_1(),
+            $type === 'shipping' ? $order->get_shipping_address_2() : $order->get_billing_address_2(),
+            $type === 'shipping' ? $order->get_shipping_city()      : $order->get_billing_city(),
+            $type === 'shipping' ? $order->get_shipping_state()     : $order->get_billing_state(),
+            $type === 'shipping' ? $order->get_shipping_postcode()  : $order->get_billing_postcode(),
+            $type === 'shipping' ? $order->get_shipping_country()   : $order->get_billing_country(),
+        ]);
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Build cart items array from order line items
+     */
+    private function build_cart_items($order, $currency) {
+        $items = [];
+
+        foreach ($order->get_items() as $item) {
+            $product     = $item->get_product();
+            $quantity    = $item->get_quantity();
+            $line_total  = floatval($item->get_total());
+            $unit_price  = $quantity > 0 ? $line_total / $quantity : $line_total;
+            $description = '';
+            if ($product) {
+                $description = wp_strip_all_tags($product->get_short_description());
+                if ($description === '') {
+                    $description = wp_strip_all_tags($product->get_description());
+                }
+            }
+            if ($description === '') {
+                $description = $item->get_name();
+            }
+
+            $items[] = [
+                'name'        => $item->get_name(),
+                'description' => $description,
+                'price'       => round($unit_price, 2),
+                'currency'    => $currency,
+            ];
+        }
+
+        return $items;
     }
     
     /**
@@ -482,15 +550,165 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     }
     
     /**
+     * Process refund
+     *
+     * @param int    $order_id Order ID
+     * @param float  $amount   Refund amount
+     * @param string $reason   Refund reason
+     * @return bool|WP_Error True on success, WP_Error on failure
+     */
+    public function process_refund( $order_id, $amount = null, $reason = '' ) {
+        $order = wc_get_order( $order_id );
+
+        if ( ! $order ) {
+            return new WP_Error( 'invalid_order', __( 'Order not found.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
+        // Block duplicate requests while a refund is already awaiting approval on
+        // CentryOS. Authoritative guard — covers the REST API and any bypass of the
+        // admin UI button-disable in CentryOS_Refund_Status.
+        if ( class_exists( 'CentryOS_Refund_Status' ) && $order->get_status() === CentryOS_Refund_Status::STATUS ) {
+            return new WP_Error( 'refund_pending', __( 'A refund for this order is already awaiting approval on CentryOS.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
+        $transaction_id = $order->get_meta( '_centryos_transaction_id' );
+
+        if ( empty( $transaction_id ) ) {
+            return new WP_Error( 'no_transaction_id', __( 'No CentryOS transaction ID found for this order.', 'centryos-payment-gateway-for-woocommerce' ) );
+        }
+
+        // CentryOS refunds the full original charge unless the request is flagged
+        // partial, so tell it whenever we're refunding less than the order total.
+        $order_total   = (float) $order->get_total();
+        $refund_amount = (float) $amount;
+        $is_partial    = $refund_amount > 0 && round( $refund_amount, 2 ) < round( $order_total, 2 );
+
+        $api_client = new CentryOS_API_Client( $this->client_id, $this->secret, $this->api_url );
+        $result     = $api_client->create_refund( $transaction_id, $amount, $reason, $is_partial );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        $note = sprintf(
+            // translators: 1: refund amount with currency, 2: original transaction ID
+            __( 'Refund of %1$s submitted to CentryOS for transaction %2$s, pending approval.', 'centryos-payment-gateway-for-woocommerce' ),
+            wc_price( $amount ),
+            $transaction_id
+        );
+
+        if ( ! empty( $result['refundId'] ) ) {
+            $order->add_meta_data( '_centryos_refund_id', $result['refundId'], false );
+            $order->save();
+            // translators: refund transaction ID returned by CentryOS
+            $note .= ' ' . sprintf( __( 'Refund ID: %s', 'centryos-payment-gateway-for-woocommerce' ), $result['refundId'] );
+        }
+
+        $order->add_order_note( $note );
+
+        return true;
+    }
+
+    /**
+     * Render the embedded CentryOS checkout on the WooCommerce order-pay page.
+     * Hooked into woocommerce_receipt_{$gateway_id}; only fires when checkout_mode = embedded.
+     */
+    public function receipt_page($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        $payment_url = $order->get_meta('_centryos_payment_url');
+        if (!$payment_url) {
+            echo '<p>' . esc_html__('Payment session is missing. Please return to checkout and try again.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+            echo '<p><a class="button" href="' . esc_url(wc_get_checkout_url()) . '">' . esc_html__('Return to checkout', 'centryos-payment-gateway-for-woocommerce') . '</a></p>';
+            return;
+        }
+
+        $scheme = wp_parse_url($payment_url, PHP_URL_SCHEME);
+        $host   = wp_parse_url($payment_url, PHP_URL_HOST);
+        $centryos_origin = ($scheme && $host) ? $scheme . '://' . $host : '';
+
+        wp_enqueue_script(
+            'centryos-embed',
+            CENTRYOS_GATEWAY_PLUGIN_URL . 'assets/js/centryos-embed.js',
+            [],
+            CENTRYOS_GATEWAY_VERSION,
+            true
+        );
+
+        wp_localize_script('centryos-embed', 'CentryOSEmbed', [
+            'orderId'        => $order->get_id(),
+            'returnUrl'      => $this->get_return_url($order),
+            'statusEndpoint' => admin_url('admin-ajax.php'),
+            'nonce'          => wp_create_nonce('centryos_check_order_status_' . $order->get_id()),
+            'centryosOrigin' => $centryos_origin,
+            'pollIntervalMs' => 2500,
+            'maxPollAttempts' => 240,
+        ]);
+
+        ?>
+        <style>
+            #centryos-embed-wrapper {
+                width: 100%;
+                max-width: 100%;
+                margin: 1em 0;
+                /* Clip the iframe's native scrollbar gutter (see iframe width below). */
+                overflow: hidden;
+            }
+            #centryos-embed-frame {
+                display: block;
+                /* Overshoot the wrapper so the cross-origin scrollbar falls into the
+                   clipped region and is hidden; content still scrolls via wheel/touch. */
+                width: calc(100% + 20px);
+                height: 100vh;
+                /* Floor for very short viewports; vh keeps it responsive otherwise. */
+                min-height: 520px;
+                border: 0;
+            }
+        </style>
+        <div id="centryos-embed-wrapper">
+            <iframe id="centryos-embed-frame"
+                    src="<?php echo esc_url($payment_url); ?>"
+                    allow="payment *"
+                    scrolling="auto"></iframe>
+        </div>
+        <?php
+    }
+
+    /**
+     * AJAX handler the embedded iframe polls to detect webhook-driven payment completion.
+     * Returns minimal JSON: { status, paid }. No PII.
+     */
+    public function ajax_check_order_status() {
+        $order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
+        $nonce    = isset($_GET['nonce']) ? sanitize_text_field(wp_unslash($_GET['nonce'])) : '';
+
+        if (!$order_id || !wp_verify_nonce($nonce, 'centryos_check_order_status_' . $order_id)) {
+            wp_send_json_error(['message' => 'invalid_request'], 400);
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error(['message' => 'order_not_found'], 404);
+        }
+
+        wp_send_json_success([
+            'status' => $order->get_status(),
+            'paid'   => $order->is_paid(),
+        ]);
+    }
+
+    /**
      * Thank you page
      */
     public function thankyou_page($order_id) {
         $order = wc_get_order($order_id);
-        
         if (!$order) {
             return;
         }
-        
+
         // Fire Meta Pixel Purchase event if enabled
         $pixel_data = $order->get_meta('_centryos_pixel_purchase');
         if ($pixel_data && $this->enable_meta_pixel === 'yes' && $this->meta_pixel_track_purchase === 'yes') {
@@ -506,60 +724,16 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             </script>
             <?php
         }
-        
-        echo '<p>' . esc_html__('Thank you! Your payment was processed via CentryOS.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+
+        if ($order->has_status('failed')) {
+            echo '<p>' . esc_html__('Your payment was not completed. Please try again or contact support.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+        } else {
+            echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+        }
     }
+
     
-    /**
-     * Generate webhook URL field (always shows current URL)
-     */
-    public function generate_webhook_url_html($key, $data) {
-        $field_key = $this->get_field_key($key);
-        $defaults = [
-            'title' => '',
-            'disabled' => false,
-            'class' => '',
-            'css' => '',
-            'placeholder' => '',
-            'type' => 'text',
-            'desc_tip' => false,
-            'description' => '',
-            'custom_attributes' => [],
-        ];
-        
-        $data = wp_parse_args($data, $defaults);
-        // Use saved value or default to ngrok URL
-        $value = $this->get_option($key, 'https://f7c6d0f0af0d.ngrok-free.app/wordpress/wp-json/v1/wh/centryos/payment-complete');
-        
-        ob_start();
-        ?>
-        <tr valign="top">
-            <th scope="row" class="titledesc">
-                <label for="<?php echo esc_attr($field_key); ?>"><?php echo wp_kses_post($data['title']); ?></label>
-            </th>
-            <td class="forminp">
-                <fieldset>
-                    <legend class="screen-reader-text"><span><?php echo wp_kses_post($data['title']); ?></span></legend>
-                    <input
-                        class="input-text regular-input <?php echo esc_attr($data['class']); ?>"
-                        type="text"
-                        name="<?php echo esc_attr($field_key); ?>"
-                        id="<?php echo esc_attr($field_key); ?>"
-                        value="<?php echo esc_attr($value); ?>"
-                        placeholder="<?php echo esc_attr($data['placeholder']); ?>"
-                        style="<?php echo esc_attr($data['css']); ?>"
-                        <?php disabled($data['disabled'], true); ?>
-                        <?php echo $this->get_custom_attribute_html($data); ?>
-                    />
-                    <?php echo $this->get_description_html($data); ?>
-                </fieldset>
-            </td>
-        </tr>
-        <?php
-        return ob_get_clean();
-    }
-    
-    /**
+/**
      * Display payment fields
      */
     public function payment_fields() {

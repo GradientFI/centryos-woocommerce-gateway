@@ -10,6 +10,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (Future changes will be listed here)
 
+## [1.5.1] - 2026-06-15
+
+### Added
+- **Pay by Bank** payment option. A new "Pay by Bank" choice in the gateway's **Payment Options** setting forwards `us_bank_account` in `acceptedPaymentOptions`, surfacing CentryOS's bank (open banking) method at checkout alongside card and wallets. Opt-in and disabled by default; availability depends on your CentryOS/Stripe account (USD / US bank accounts). Confirmed accepted by the CentryOS recurring/checkout API on staging.
+
+## [1.5.0] - 2026-06-15
+
+### Added
+- **Subscriptions.** Tag any simple product as a recurring CentryOS subscription from a new **CentryOS Subscription** product-data tab. Configure the recurring **rate**, the billing cycle (**Subscriptions Per Interval** — a value plus a Days/Weeks/Months/Years unit), and an optional **Free trial interval** (value plus unit).
+- **Recurring checkout.** Orders that contain a subscription product are sent to CentryOS as a recurring payment (`checkoutType: recurring`). The full cart total is charged once up front; only the subscription rate recurs each cycle. One-time products can share the cart with a subscription and are folded into that initial charge.
+- **Subscription tracking.** New `{$wpdb->prefix}centryos_subscriptions` table records each subscription's status, billing interval, cycle count and **next renewal date**; the originating order stores `_centryos_subscription_id`.
+- **Renewal orders.** Each successful renewal creates a new linked WooCommerce order containing only the subscription line at the recurring rate, then advances the next renewal date.
+- **Subscription lifecycle webhooks.** Handles `COLLECTION.RECURRING.CREATED`, `.PAID`, `.FAILED`, `.UPDATED` and `.DELETED`, with new action hooks `centryos_webhook_subscription_created`, `centryos_webhook_subscription_renewed`, `centryos_webhook_subscription_payment_failed` and `centryos_webhook_subscription_cancelled` for integrations.
+- **Merchant cancellation.** New **WooCommerce → CentryOS Subscriptions** admin screen lists customer subscriptions and cancels them at the end of the current paid period.
+- **"Add subscription to cart"** button label on subscription products, on both shop/archive and single-product pages.
+- `CentryOS_API_Client::cancel_subscription()` and `get_recurring_payment()` methods plus the recurring endpoint paths.
+
+### Changed
+- Cart guardrails: a cart may contain at most one subscription product (CentryOS bills a single subscription per checkout). Mixing a subscription with regular one-time products is allowed — the one-time items are charged once with the initial payment.
+
+> **Requires** the CentryOS recurring payments API (liquidity-service) with the recurring-payment **cancel** endpoint and `recurringCharge.amount` / `trialPeriodDays` support. One-time payment behavior is unchanged.
+
+## [1.4.0] - 2026-05-25
+
+### Added
+- Embedded checkout mode: a new `Checkout Mode` setting renders the CentryOS payment page inside an iframe on the WooCommerce order-pay page instead of redirecting off-site. On payment success the buyer is redirected to the standard WooCommerce order-received page. Detection uses a `postMessage` listener (event `centryos_payment_complete`, fast path) with an AJAX poll of the order status as a resilient fallback once the webhook flips the order to paid. Requires CentryOS framing to be enabled for the merchant origin.
+- New `assets/js/centryos-embed.js` script and `centryos_check_order_status` admin-ajax endpoint that powers the embedded flow.
+
+### Changed
+- In embedded mode, newly-created orders are placed in `pending` (Pending payment) instead of `on-hold` so WooCommerce's order-pay page actually renders the receipt hook. Redirect mode behavior is unchanged.
+
+## [1.3.0] - 2026-05-18
+
+### Added
+- Refund support via the gateway
+- Cart items and address details forwarded with payment link requests
+- Unconditional webhook logging to PHP `error_log` and WooCommerce Status > Logs (source: `centryos-webhook`); no longer gated by `WP_DEBUG`
+
+### Changed
+- Webhook handler now requires an explicit failure status (`FAILED`, `FAILURE`, `DECLINED`, `CANCELLED`, `CANCELED`, `EXPIRED`) before marking an order failed. Unknown or pending statuses are acknowledged with HTTP 200 without mutating the order
+- Failed-payment processing is idempotent — duplicate failure webhooks for an already-failed/cancelled/refunded order short-circuit without re-running `update_status`, `wc_increase_stock_levels`, or the `centryos_webhook_payment_failed` action
+- Success-status detection normalized to a single case-insensitive check
+- JSON payload validation runs after signature verification and returns an explicit `400 Invalid JSON payload` on malformed bodies
+
+### Removed
+- Dead `get_credential` instance method on the all-static `CentryOS_Webhook_Handler` class
+
 ## [1.2.0] - 2025-11-12
 
 ### Added
@@ -87,11 +134,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **1.3.0** - Refunds, payment-link cart/address payload, hardened webhook handling and unconditional logging
 - **1.2.0** - API environment selector, blocks compatibility fixes, form fields improvements
 - **1.1.0** - Major refactoring with improved security and structure
 - **1.0.3** - Initial public release
 
 ## Upgrade Notes
+
+### Upgrading to 1.3.0
+
+- **Breaking Changes**: Webhook semantics changed — previously, *any* non-success webhook payload would mark the order as failed. The handler now only marks orders failed on explicit failure statuses; pending/unknown statuses return 200 without changing order state. If the CentryOS sender relies on the old behavior to fail orders via custom statuses, those statuses must be added to the failure allow-list in `is_payment_failed()`.
+- **Recommended Actions**:
+  - Verify webhook URL on the CentryOS side: `/wp-json/v1/wh/centryos/payment-complete`
+  - Confirm `CENTRYOS_WEBHOOK_SECRET` is defined in `wp-config.php`
+  - Check **WooCommerce > Status > Logs** (source: `centryos-webhook`) after the first webhook hit to confirm logging is wired
+- **Deprecations**: None
 
 ### Upgrading to 1.2.0
 
