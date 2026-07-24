@@ -40,27 +40,26 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         $this->color_disabled = $this->get_option('color_disabled', '#E9D5FF');
         $this->color_pale = $this->get_option('color_pale', '#F3E8FF');
 
-        // Meta Pixel settings
-        $this->enable_meta_pixel = $this->get_option('enable_meta_pixel', 'no');
-        $this->meta_pixel_id = $this->get_option('meta_pixel_id', '');
-        $this->meta_pixel_advanced_matching = $this->get_option('meta_pixel_advanced_matching', 'yes');
-        $this->meta_pixel_track_initiate_checkout = $this->get_option('meta_pixel_track_initiate_checkout', 'yes');
-        $this->meta_pixel_track_add_payment_info = $this->get_option('meta_pixel_track_add_payment_info', 'yes');
-        $this->meta_pixel_track_purchase = $this->get_option('meta_pixel_track_purchase', 'yes');
-
-        // Initialize Meta Pixel if enabled
-        if ($this->enable_meta_pixel === 'yes' && !empty($this->meta_pixel_id)) {
-            require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-pixel-tracker.php';
-            new CentryOS_Pixel_Tracker(
-                $this->meta_pixel_id,
-                $this->meta_pixel_advanced_matching === 'yes',
-                [
-                    'initiate_checkout' => $this->meta_pixel_track_initiate_checkout === 'yes',
-                    'add_payment_info' => $this->meta_pixel_track_add_payment_info === 'yes',
-                    'purchase' => $this->meta_pixel_track_purchase === 'yes'
-                ]
-            );
-        }
+        // Meta Pixel — temporarily disabled
+        // $this->enable_meta_pixel = $this->get_option('enable_meta_pixel', 'no');
+        // $this->meta_pixel_id = $this->get_option('meta_pixel_id', '');
+        // $this->meta_pixel_advanced_matching = $this->get_option('meta_pixel_advanced_matching', 'yes');
+        // $this->meta_pixel_track_initiate_checkout = $this->get_option('meta_pixel_track_initiate_checkout', 'yes');
+        // $this->meta_pixel_track_add_payment_info = $this->get_option('meta_pixel_track_add_payment_info', 'yes');
+        // $this->meta_pixel_track_purchase = $this->get_option('meta_pixel_track_purchase', 'yes');
+        //
+        // if ($this->enable_meta_pixel === 'yes' && !empty($this->meta_pixel_id)) {
+        //     require_once CENTRYOS_GATEWAY_PLUGIN_DIR . 'includes/class-centryos-pixel-tracker.php';
+        //     new CentryOS_Pixel_Tracker(
+        //         $this->meta_pixel_id,
+        //         $this->meta_pixel_advanced_matching === 'yes',
+        //         [
+        //             'initiate_checkout' => $this->meta_pixel_track_initiate_checkout === 'yes',
+        //             'add_payment_info' => $this->meta_pixel_track_add_payment_info === 'yes',
+        //             'purchase' => $this->meta_pixel_track_purchase === 'yes'
+        //         ]
+        //     );
+        // }
 
         $this->checkout_mode = $this->get_option('checkout_mode', 'redirect');
 
@@ -83,22 +82,23 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
 
     /**
      * Validate Meta Pixel ID
+     * Temporarily unused while Meta Pixel is disabled.
      */
-    public function validate_meta_pixel_id_field($key, $value) {
-        $enable_pixel = isset($_POST['woocommerce_centryos_gateway_enable_meta_pixel']) ? 'yes' : 'no';
-        
-        if ($enable_pixel === 'yes' && empty($value)) {
-            WC_Admin_Settings::add_error(__('Meta Pixel ID is required when Meta Pixel is enabled.', 'centryos-payment-gateway-for-woocommerce'));
-            return '';
-        }
-        
-        if (!empty($value) && !preg_match('/^[0-9]{15,16}$/', $value)) {
-            WC_Admin_Settings::add_error(__('Meta Pixel ID must be 15-16 digits.', 'centryos-payment-gateway-for-woocommerce'));
-            return '';
-        }
-        
-        return $value;
-    }
+    // public function validate_meta_pixel_id_field($key, $value) {
+    //     $enable_pixel = isset($_POST['woocommerce_centryos_gateway_enable_meta_pixel']) ? 'yes' : 'no';
+    //     
+    //     if ($enable_pixel === 'yes' && empty($value)) {
+    //         WC_Admin_Settings::add_error(__('Meta Pixel ID is required when Meta Pixel is enabled.', 'centryos-payment-gateway-for-woocommerce'));
+    //         return '';
+    //     }
+    //     
+    //     if (!empty($value) && !preg_match('/^[0-9]{15,16}$/', $value)) {
+    //         WC_Admin_Settings::add_error(__('Meta Pixel ID must be 15-16 digits.', 'centryos-payment-gateway-for-woocommerce'));
+    //         return '';
+    //     }
+    //     
+    //     return $value;
+    // }
 
     /**
      * Initialize form fields
@@ -196,56 +196,56 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
               'description' => 'Pale color for payment elements'
           ],
 
-          // Meta Pixel Settings Section
-          'meta_pixel_section' => [
-              'title' => __('Meta Pixel Settings', 'centryos-payment-gateway-for-woocommerce'),
-              'type'  => 'title',
-              'description' => __('Configure Meta Pixel (Facebook Pixel) for retargeting and conversion tracking.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'enable_meta_pixel' => [
-              'title' => __('Enable Meta Pixel', 'centryos-payment-gateway-for-woocommerce'),
-              'type'  => 'checkbox',
-              'label' => __('Enable Meta Pixel tracking', 'centryos-payment-gateway-for-woocommerce'),
-              'default' => 'no',
-              'description' => __('Track checkout and purchase events for retargeting campaigns.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'meta_pixel_id' => [
-              'title' => __('Meta Pixel ID', 'centryos-payment-gateway-for-woocommerce'),
-              'type'  => 'text',
-              'default' => '',
-              'description' => __('Enter your Meta Pixel ID (e.g., 123456789012345). Find it in your Meta Events Manager.', 'centryos-payment-gateway-for-woocommerce'),
-              'placeholder' => '123456789012345',
-              'custom_attributes' => [
-                  'pattern' => '[0-9]{15,16}',
-                  'maxlength' => '16'
-              ]
-          ],
-          'meta_pixel_advanced_matching' => [
-              'title' => __('Advanced Matching', 'centryos-payment-gateway-for-woocommerce'),
-              'type'  => 'checkbox',
-              'label' => __('Enable advanced matching (email, phone, etc.)', 'centryos-payment-gateway-for-woocommerce'),
-              'default' => 'yes',
-              'description' => __('Send customer data (email, phone) to Meta for better matching. Requires privacy compliance.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'meta_pixel_track_initiate_checkout' => [
-              'title' => __('Track Events', 'centryos-payment-gateway-for-woocommerce'),
-              'type'  => 'checkbox',
-              'label' => __('Track InitiateCheckout event', 'centryos-payment-gateway-for-woocommerce'),
-              'default' => 'yes',
-              'description' => __('Fire InitiateCheckout when customer reaches checkout page.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'meta_pixel_track_add_payment_info' => [
-              'type'  => 'checkbox',
-              'label' => __('Track AddPaymentInfo event', 'centryos-payment-gateway-for-woocommerce'),
-              'default' => 'yes',
-              'description' => __('Fire AddPaymentInfo when customer selects CentryOS payment method.', 'centryos-payment-gateway-for-woocommerce')
-          ],
-          'meta_pixel_track_purchase' => [
-              'type'  => 'checkbox',
-              'label' => __('Track Purchase event', 'centryos-payment-gateway-for-woocommerce'),
-              'default' => 'yes',
-              'description' => __('Fire Purchase event when payment is completed successfully.', 'centryos-payment-gateway-for-woocommerce')
-          ],
+          // Meta Pixel Settings — temporarily disabled
+          // 'meta_pixel_section' => [
+          //     'title' => __('Meta Pixel Settings', 'centryos-payment-gateway-for-woocommerce'),
+          //     'type'  => 'title',
+          //     'description' => __('Configure Meta Pixel (Facebook Pixel) for retargeting and conversion tracking.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
+          // 'enable_meta_pixel' => [
+          //     'title' => __('Enable Meta Pixel', 'centryos-payment-gateway-for-woocommerce'),
+          //     'type'  => 'checkbox',
+          //     'label' => __('Enable Meta Pixel tracking', 'centryos-payment-gateway-for-woocommerce'),
+          //     'default' => 'no',
+          //     'description' => __('Track checkout and purchase events for retargeting campaigns.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
+          // 'meta_pixel_id' => [
+          //     'title' => __('Meta Pixel ID', 'centryos-payment-gateway-for-woocommerce'),
+          //     'type'  => 'text',
+          //     'default' => '',
+          //     'description' => __('Enter your Meta Pixel ID (e.g., 123456789012345). Find it in your Meta Events Manager.', 'centryos-payment-gateway-for-woocommerce'),
+          //     'placeholder' => '123456789012345',
+          //     'custom_attributes' => [
+          //         'pattern' => '[0-9]{15,16}',
+          //         'maxlength' => '16'
+          //     ]
+          // ],
+          // 'meta_pixel_advanced_matching' => [
+          //     'title' => __('Advanced Matching', 'centryos-payment-gateway-for-woocommerce'),
+          //     'type'  => 'checkbox',
+          //     'label' => __('Enable advanced matching (email, phone, etc.)', 'centryos-payment-gateway-for-woocommerce'),
+          //     'default' => 'yes',
+          //     'description' => __('Send customer data (email, phone) to Meta for better matching. Requires privacy compliance.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
+          // 'meta_pixel_track_initiate_checkout' => [
+          //     'title' => __('Track Events', 'centryos-payment-gateway-for-woocommerce'),
+          //     'type'  => 'checkbox',
+          //     'label' => __('Track InitiateCheckout event', 'centryos-payment-gateway-for-woocommerce'),
+          //     'default' => 'yes',
+          //     'description' => __('Fire InitiateCheckout when customer reaches checkout page.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
+          // 'meta_pixel_track_add_payment_info' => [
+          //     'type'  => 'checkbox',
+          //     'label' => __('Track AddPaymentInfo event', 'centryos-payment-gateway-for-woocommerce'),
+          //     'default' => 'yes',
+          //     'description' => __('Fire AddPaymentInfo when customer selects CentryOS payment method.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
+          // 'meta_pixel_track_purchase' => [
+          //     'type'  => 'checkbox',
+          //     'label' => __('Track Purchase event', 'centryos-payment-gateway-for-woocommerce'),
+          //     'default' => 'yes',
+          //     'description' => __('Fire Purchase event when payment is completed successfully.', 'centryos-payment-gateway-for-woocommerce')
+          // ],
       ];
     }
 
@@ -709,21 +709,8 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             return;
         }
 
-        // Fire Meta Pixel Purchase event if enabled
-        $pixel_data = $order->get_meta('_centryos_pixel_purchase');
-        if ($pixel_data && $this->enable_meta_pixel === 'yes' && $this->meta_pixel_track_purchase === 'yes') {
-            ?>
-            <script>
-            if (typeof fbq !== 'undefined') {
-                fbq('track', 'Purchase', {
-                    value: <?php echo esc_js($pixel_data['value']); ?>,
-                    currency: '<?php echo esc_js($pixel_data['currency']); ?>',
-                    contents: <?php echo wp_json_encode($pixel_data['contents']); ?>
-                });
-            }
-            </script>
-            <?php
-        }
+        // Meta Pixel Purchase — temporarily disabled. Restore from git history / pixel tracker when ready.
+        // Previously fired fbq('track', 'Purchase', ...) from order meta `_centryos_pixel_purchase`.
 
         if ($order->has_status('failed')) {
             echo '<p>' . esc_html__('Your payment was not completed. Please try again or contact support.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
