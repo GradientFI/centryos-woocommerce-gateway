@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- (Future changes will be listed here)
+### Fixed
+- Customers who leave checkout without paying no longer see a "Thank you" message on the order-received page. If the order is still unpaid, the page now says the payment has not been received and shows a **Pay now** button that returns them to payment.
+- Stock is no longer reduced when the customer is sent to CentryOS checkout. WooCommerce now reduces it when the payment completes, so abandoned checkouts no longer hold stock.
 
 ## [1.5.1] - 2026-06-15
 

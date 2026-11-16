@@ -254,8 +254,6 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         // Add customer information as query strings
         $payment_url = $this->add_customer_query_strings($payment_url, $order);
 
-        wc_reduce_stock_levels($order_id);
-
         if ($this->checkout_mode === 'embedded') {
             // Force 'pending' so WC_Order::needs_payment() stays true and the
             // woocommerce_receipt_{$id} hook fires on the order-pay page. The
@@ -612,11 +610,27 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
      */
     public function thankyou_page($order_id) {
         $order = wc_get_order($order_id);
-        if ($order && $order->has_status('failed')) {
-            echo '<p>' . esc_html__('Your payment was not completed. Please try again or contact support.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
-        } else {
-            echo '<p>' . esc_html__('Thank you! You were redirected to CentryOS to complete payment.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+        if (!$order) {
+            return;
         }
+
+        if ($order->has_status('failed')) {
+            echo '<p>' . esc_html__('Your payment was not completed. Please try again or contact support.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+            $this->render_pay_now_link($order);
+            return;
+        }
+
+        if ($order->needs_payment()) {
+            echo '<p>' . esc_html__('We have not received your payment yet. If you completed payment, you will get a confirmation email shortly. If not, you can complete it now.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+            $this->render_pay_now_link($order);
+            return;
+        }
+
+        echo '<p>' . esc_html__('Thank you! Your payment has been received.', 'centryos-payment-gateway-for-woocommerce') . '</p>';
+    }
+
+    private function render_pay_now_link($order) {
+        echo '<p><a class="button" href="' . esc_url($order->get_checkout_payment_url()) . '">' . esc_html__('Pay now', 'centryos-payment-gateway-for-woocommerce') . '</a></p>';
     }
     
 /**
