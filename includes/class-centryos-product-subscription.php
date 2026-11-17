@@ -42,8 +42,8 @@ class CentryOS_Product_Subscription {
         add_action('woocommerce_product_data_panels', [__CLASS__, 'render_panel']);
         add_action('woocommerce_process_product_meta', [__CLASS__, 'save_fields']);
 
-        // Guardrails: at most one subscription product per cart (Stripe allows a
-        // single subscription per checkout). Mixing with one-time products is OK.
+        // Guardrails: at most one subscription product per cart (the payment processor
+        // allows a single subscription per checkout). Mixing with one-time products is OK.
         add_filter('woocommerce_add_to_cart_validation', [__CLASS__, 'validate_add_to_cart'], 10, 3);
         add_action('woocommerce_check_cart_items', [__CLASS__, 'validate_cart_items']);
 

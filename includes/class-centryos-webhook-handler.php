@@ -759,7 +759,6 @@ class CentryOS_Webhook_Handler
 
     $amount     = isset($payload['amount']) ? floatval($payload['amount']) : 0.0;
     $currency   = $payload['currency'] ?? $order->get_currency();
-    $stripe_ref = isset($payload['metadata']['stripeRefundId']) ? $payload['metadata']['stripeRefundId'] : '';
     $reason     = isset($payload['metadata']['note'])
       ? $payload['metadata']['note']
       : (isset($payload['metadata']['reason']) ? $payload['metadata']['reason'] : '');
@@ -817,10 +816,6 @@ class CentryOS_Webhook_Handler
       $amount,
       $currency
     );
-    if (!empty($stripe_ref)) {
-      // translators: processor refund reference id
-      $note .= ' ' . sprintf(__('Processor refund ID: %s', 'centryos-payment-gateway-for-woocommerce'), $stripe_ref);
-    }
     $order->add_order_note($note);
 
     self::record_refund_state($order, $refund_txn_id, 'approved');
