@@ -578,7 +578,7 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
         <div id="centryos-embed-wrapper">
             <iframe id="centryos-embed-frame"
                     src="<?php echo esc_url($payment_url); ?>"
-                    allow="payment *"
+                    allow="payment *; camera *; microphone *"
                     scrolling="auto"></iframe>
         </div>
         <?php
