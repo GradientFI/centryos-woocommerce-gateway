@@ -40,7 +40,7 @@ Yes. As of 1.5.0 you can tag a simple product as a subscription under its "Centr
 == Changelog ==
 
 = 1.5.1 =
-* Added: Pay by Bank — a new option in the gateway's Payment Options that lets customers pay directly from their bank account (open banking) at CentryOS checkout. Opt-in; enable it under WooCommerce > Settings > Payments > CentryOS. Availability depends on your CentryOS/Stripe account (USD / US bank accounts).
+* Added: Pay by Bank — a new option in the gateway's Payment Options that lets customers pay directly from their bank account (open banking) at CentryOS checkout. Opt-in; enable it under WooCommerce > Settings > Payments > CentryOS. Availability depends on your CentryOS account (USD / US bank accounts).
 
 = 1.5.0 =
 * Added: Subscriptions — tag a simple product as recurring in the new "CentryOS Subscription" product tab (recurring rate, billing interval, and an optional free trial with day/week/month/year units)

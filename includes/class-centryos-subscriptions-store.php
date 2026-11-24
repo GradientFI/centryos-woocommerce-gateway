@@ -3,7 +3,7 @@
  * CentryOS Subscriptions Store
  *
  * Custom-table persistence for customer subscriptions. Subscriptions are keyed
- * by the CentryOS/Stripe subscription id and linked back to the originating
+ * by the CentryOS subscription id and linked back to the originating
  * WooCommerce order, so webhook events and the admin list can look them up.
  *
  * @package CentryOS_Gateway
@@ -72,7 +72,7 @@ class CentryOS_Subscriptions_Store {
     /**
      * Insert or update a subscription record keyed by subscription_id.
      *
-     * @param string $subscription_id CentryOS/Stripe subscription id.
+     * @param string $subscription_id CentryOS subscription id.
      * @param array  $data            Column => value pairs.
      * @return int|false Row id on success, false on failure.
      */

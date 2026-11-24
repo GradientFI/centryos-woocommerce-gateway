@@ -7,13 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- (Future changes will be listed here)
+### Fixed
+- Customers who leave checkout without paying no longer see a "Thank you" message on the order-received page. If the order is still unpaid, the page now says the payment has not been received and shows a **Pay now** button that returns them to payment.
+- Stock is no longer reduced when the customer is sent to CentryOS checkout. WooCommerce now reduces it when the payment completes, so abandoned checkouts no longer hold stock.
 
 ## [1.5.1] - 2026-06-15
 
 ### Added
-- **Pay by Bank** payment option. A new "Pay by Bank" choice in the gateway's **Payment Options** setting forwards `us_bank_account` in `acceptedPaymentOptions`, surfacing CentryOS's bank (open banking) method at checkout alongside card and wallets. Opt-in and disabled by default; availability depends on your CentryOS/Stripe account (USD / US bank accounts). Confirmed accepted by the CentryOS recurring/checkout API on staging.
+- **Pay by Bank** payment option. A new "Pay by Bank" choice in the gateway's **Payment Options** setting forwards `us_bank_account` in `acceptedPaymentOptions`, surfacing CentryOS's bank (open banking) method at checkout alongside card and wallets. Opt-in and disabled by default; availability depends on your CentryOS account (USD / US bank accounts). Confirmed accepted by the CentryOS recurring/checkout API on staging.
 
 ## [1.5.0] - 2026-06-15
 
