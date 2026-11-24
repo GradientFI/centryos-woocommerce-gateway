@@ -384,16 +384,21 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
     }
 
     /**
-     * Build cart items array from order line items
+     * Build cart items array from the order.
+     *
+     * `amount` is the full order total, so the rows sent here must add up to it: product
+     * lines (with quantity), then shipping, fees and tax, and finally a rounding row if
+     * per-unit rounding left the sum a cent or more off. Without these rows the checkout
+     * summary shows a total larger than the items listed above it.
      */
     private function build_cart_items($order, $currency) {
         $items = [];
 
         foreach ($order->get_items() as $item) {
             $product     = $item->get_product();
-            $quantity    = $item->get_quantity();
+            $quantity    = max(1, (int) $item->get_quantity());
             $line_total  = floatval($item->get_total());
-            $unit_price  = $quantity > 0 ? $line_total / $quantity : $line_total;
+            $unit_price  = $line_total / $quantity;
             $description = '';
             if ($product) {
                 $description = wp_strip_all_tags($product->get_short_description());
@@ -408,12 +413,76 @@ class CentryOS_Gateway extends WC_Payment_Gateway {
             $items[] = [
                 'name'        => $item->get_name(),
                 'description' => $description,
+                'qty'         => $quantity,
                 'price'       => round($unit_price, 2),
                 'currency'    => $currency,
             ];
         }
 
+        // Shipping (excluding its tax, which is counted in the tax row below).
+        $shipping_total = round(floatval($order->get_shipping_total()), 2);
+        if ($shipping_total > 0) {
+            $shipping_method = wp_strip_all_tags((string) $order->get_shipping_method());
+            $items[] = $this->build_charge_row(
+                __('Shipping', 'centryos-payment-gateway-for-woocommerce'),
+                $shipping_method,
+                $shipping_total,
+                $currency
+            );
+        }
+
+        // Fee lines (surcharges, or negative fees used as discounts), excluding their tax.
+        foreach ($order->get_items('fee') as $fee) {
+            $fee_total = round(floatval($fee->get_total()), 2);
+            if ($fee_total != 0) {
+                $items[] = $this->build_charge_row($fee->get_name(), '', $fee_total, $currency);
+            }
+        }
+
+        // All tax on the order: products, shipping and fees.
+        $tax_total = round(floatval($order->get_total_tax()), 2);
+        if ($tax_total > 0) {
+            $items[] = $this->build_charge_row(
+                __('Tax', 'centryos-payment-gateway-for-woocommerce'),
+                '',
+                $tax_total,
+                $currency
+            );
+        }
+
+        // Unit prices are rounded to cents, so qty x unit price can drift from the order
+        // total by a cent or so. Close any remaining gap so the rows always match `amount`.
+        $rows_total = 0.0;
+        foreach ($items as $row) {
+            $rows_total += $row['qty'] * $row['price'];
+        }
+        $difference = round(floatval($order->get_total()) - $rows_total, 2);
+        if (abs($difference) >= 0.01) {
+            $items[] = $this->build_charge_row(
+                __('Rounding', 'centryos-payment-gateway-for-woocommerce'),
+                '',
+                $difference,
+                $currency
+            );
+        }
+
         return $items;
+    }
+
+    /**
+     * A non-product row (shipping, fee, tax, rounding). The API requires a non-empty
+     * description, so fall back to the name. Kept short: the cart is also passed to the
+     * payment processor as metadata, which has a size limit.
+     */
+    private function build_charge_row($name, $description, $amount, $currency) {
+        $description = trim((string) $description);
+        return [
+            'name'        => $name,
+            'description' => $description !== '' ? $description : $name,
+            'qty'         => 1,
+            'price'       => round($amount, 2),
+            'currency'    => $currency,
+        ];
     }
     
     /**
